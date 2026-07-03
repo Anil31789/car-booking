@@ -1,0 +1,171 @@
+/* Core Design Tokens & Theme Variables */
+:root {
+  // Brand Colors
+  --color-primary: #0a84ff;     // Vibrant Blue
+  --color-primary-rgb: 10, 132, 255;
+  --color-secondary: #34c759;   // Success Green
+  --color-secondary-rgb: 52, 199, 89;
+  --color-danger: #ff453a;      // Warning Red
+
+  // Typography
+  --font-primary: 'Outfit', sans-serif;
+  --font-secondary: 'Inter', sans-serif;
+
+  // Borders & Shadows
+  --border-radius-lg: 20px;
+  --border-radius-md: 16px;
+  --border-radius-sm: 12px;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  // Transitions
+  --transition-smooth: all 0.25s ease;
+  --transition-spring: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  // Safe area fallback for mobile devices
+  --safe-area-bottom: 0px;
+
+  // Light Mode Colors (HSL mapped)
+  --bg-primary: 0, 0%, 100%;       // #ffffff
+  --bg-secondary: 210, 20%, 98%;   // #f8f9fa
+  --bg-tertiary: 210, 16%, 93%;    // #eef1f4
+  --text-primary: 210, 24%, 16%;   // #1e252b
+  --text-secondary: 210, 16%, 46%; // #617180
+  --text-tertiary: 210, 12%, 70%;  // #abafb3
+  --border-light: 210, 14%, 90%;   // #e2e5e9
+  --border-medium: 210, 12%, 80%;  // #c2c7cd
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.4);
+}
+
+/* Dark Mode Theme overrides */
+.dark-mode {
+  --bg-primary: 220, 20%, 10%;       // #14171a
+  --bg-secondary: 220, 16%, 14%;     // #1d2126
+  --bg-tertiary: 220, 14%, 20%;      // #2b3038
+  --text-primary: 0, 0%, 96%;        // #f5f5f5
+  --text-secondary: 220, 10%, 70%;   // #a8b0ba
+  --text-tertiary: 220, 8%, 48%;     // #717780
+  --border-light: 220, 12%, 18%;     // #282f37
+  --border-medium: 220, 10%, 30%;    // #454d57
+  --glass-bg: rgba(20, 23, 26, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* Base Styles & Resets */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: hsl(var(--bg-secondary));
+  color: hsl(var(--text-primary));
+  font-family: var(--font-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-primary);
+  font-weight: 700;
+  color: hsl(var(--text-primary));
+}
+
+p, span, label, input, button, select, textarea {
+  font-family: var(--font-secondary);
+}
+
+// Hide default browser scrollbars
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* Glassmorphism Panel helper */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+/* Custom Interactive Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+/* Button & Interactable styling */
+.ripple-btn {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: var(--border-radius-sm);
+  padding: 14px 24px;
+  transition: var(--transition-spring);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(var(--color-primary-rgb), 0.3);
+
+  &:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(var(--color-primary-rgb), 0.4);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  &.btn-secondary {
+    background-color: hsl(var(--bg-tertiary));
+    color: hsl(var(--text-primary));
+    box-shadow: none;
+
+    &:hover {
+      background-color: hsl(var(--border-light));
+      box-shadow: none;
+    }
+  }
+}
