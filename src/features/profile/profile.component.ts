@@ -5,11 +5,15 @@ import { FormsModule } from '@angular/forms';
 import { AuthStore } from '../../core/store/auth.store';
 import { UserStore } from '../../core/store/user.store';
 import { AuthService } from '../../core/services/auth.service';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { LegalDialogComponent } from './legal-dialog.component';
+import { ContactDialogComponent } from './contact-dialog.component';
+import { DonateDialogComponent } from './donate-dialog.component';
 
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   template: `
     <div class="profile-page slide-in" *ngIf="authStore.currentUser() as user">
       <header class="page-header">
@@ -90,6 +94,68 @@ import { AuthService } from '../../core/services/auth.service';
               (ngModelChange)="toggleTheme()" />
             <span class="slider-switch"></span>
           </label>
+        </div>
+      </section>
+
+      <!-- Legal and community settings section -->
+      <section class="profile-section glass-panel">
+        <h4 class="section-title">Legal & Community</h4>
+        <div class="settings-list">
+          
+          <!-- About -->
+          <div class="setting-row clickable" (click)="openLegal('about')">
+            <div class="setting-meta">
+              <span class="setting-title">About HighwayPool</span>
+              <span class="setting-sub">Learn about our mission and carpooling</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon">info</span>
+          </div>
+
+          <!-- Terms -->
+          <div class="setting-row clickable" (click)="openLegal('terms')">
+            <div class="setting-meta">
+              <span class="setting-title">Terms & Conditions</span>
+              <span class="setting-sub">Verify platform rules and liability exemptions</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon">gavel</span>
+          </div>
+
+          <!-- Privacy -->
+          <div class="setting-row clickable" (click)="openLegal('privacy')">
+            <div class="setting-meta">
+              <span class="setting-title">Privacy Policy</span>
+              <span class="setting-sub">Check how your data is handled and deletion rights</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon">security</span>
+          </div>
+
+          <!-- Guidelines -->
+          <div class="setting-row clickable" (click)="openLegal('guidelines')">
+            <div class="setting-meta">
+              <span class="setting-title">Community Guidelines</span>
+              <span class="setting-sub">Code of conduct and highway rules</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon">groups</span>
+          </div>
+
+          <!-- Contact Us -->
+          <div class="setting-row clickable" (click)="openContact()">
+            <div class="setting-meta">
+              <span class="setting-title">Contact & Support</span>
+              <span class="setting-sub">Send feedback or reach our helpline</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon">chat</span>
+          </div>
+
+          <!-- Donate -->
+          <div class="setting-row clickable" (click)="openDonate()">
+            <div class="setting-meta">
+              <span class="setting-title">Support HighwayPool (Donate)</span>
+              <span class="setting-sub text-danger font-sm">Help keep our servers active & voluntary donation</span>
+            </div>
+            <span class="material-icons-outlined arrow-icon text-danger">favorite</span>
+          </div>
+
         </div>
       </section>
 
@@ -365,6 +431,35 @@ import { AuthService } from '../../core/services/auth.service';
       }
     }
 
+    .settings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .setting-row.clickable {
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      
+      &:hover {
+        opacity: 0.85;
+        transform: translateX(4px);
+      }
+      
+      .arrow-icon {
+        color: hsl(var(--text-tertiary));
+        font-size: 1.25rem;
+      }
+
+      .arrow-icon.text-danger {
+        color: var(--color-danger);
+      }
+      
+      .font-sm {
+        font-size: 0.65rem;
+      }
+    }
+
     .spinner {
       width: 16px;
       height: 16px;
@@ -383,11 +478,37 @@ export class ProfileComponent {
   authStore = inject(AuthStore);
   userStore = inject(UserStore);
   private authService = inject(AuthService);
+  private dialog = inject(MatDialog);
   router = inject(Router);
 
   licenseCode = '';
   loading = false;
   confirmLogout = false;
+
+  openLegal(type: 'about' | 'terms' | 'privacy' | 'guidelines') {
+    this.dialog.open(LegalDialogComponent, {
+      data: { type },
+      width: '90%',
+      maxWidth: '480px',
+      panelClass: 'custom-dialog-panel'
+    });
+  }
+
+  openContact() {
+    this.dialog.open(ContactDialogComponent, {
+      width: '90%',
+      maxWidth: '480px',
+      panelClass: 'custom-dialog-panel'
+    });
+  }
+
+  openDonate() {
+    this.dialog.open(DonateDialogComponent, {
+      width: '90%',
+      maxWidth: '480px',
+      panelClass: 'custom-dialog-panel'
+    });
+  }
 
   verifyLicense() {
     if (!this.licenseCode) return;
