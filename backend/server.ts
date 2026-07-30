@@ -1,7 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initDatabase } from './db.js';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+import { initDatabase, closeDatabase, pool, isFallback } from './db.js';
 import authRoutes from './routes/auth.routes.js';
 import rideRoutes from './routes/ride.routes.js';
 import bookingRoutes from './routes/booking.routes.js';
@@ -10,36 +16,152 @@ import notificationRoutes from './routes/notification.routes.js';
 
 dotenv.config();
 
+// Validate required environment variables in production
+const requiredEnv = ['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'ALLOWED_ORIGINS', 'API_BASE_URL', 'LOCATION_PROVIDER'];
+const missingEnv = requiredEnv.filter(k => !process.env[k]);
+
+if (process.env.NODE_ENV === 'production') {
+  if (missingEnv.length > 0) {
+    console.error(`FATAL CONFIGURATION ERROR: Missing required production environment variables: ${missingEnv.join(', ')}`);
+    process.exit(1);
+  }
+  
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'highwaypool_supersecret_jwt_token_key_2026') {
+    console.error('FATAL CONFIGURATION ERROR: JWT_SECRET must be configured and cannot use the default development key in production.');
+    process.exit(1);
+  }
+}
+
+// Load Application Version from package.json
+let appVersion = '1.0.0';
+try {
+  const packageJsonPath = join(__dirname, 'package.json');
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+  appVersion = packageJson.version || '1.0.0';
+} catch (e) {
+  // fallback if file not found or failed parsing
+}
+
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Middleware
+// Enable trust proxy for correct client IP detection behind reverse proxies (Nginx / Passenger)
+app.set('trust proxy', 1);
+
+// Add security headers using Helmet
+app.use(helmet());
+
+// Dynamic CORS configuration
+let allowedOrigins: string[] = [];
+if (process.env.ALLOWED_ORIGINS) {
+  allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+} else if (process.env.NODE_ENV !== 'production') {
+  allowedOrigins = ['http://localhost:4200', 'http://localhost:4000'];
+}
+
 app.use(cors({
-  origin: ['http://localhost:4200', 'http://localhost:4000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl/postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS policy'));
+    }
+  },
   credentials: true
 }));
+
 app.use(express.json());
 
-// Routes
+// Global Rate Limiting for all API requests
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes.' }
+});
+app.use('/api', globalLimiter);
+
+// Register routes
 app.use('/api/auth', authRoutes);
 app.use('/api/rides', rideRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// Basic Healthcheck
-app.get('/health', (req, res) => {
-  res.json({ status: 'UP' });
+// Comprehensive Healthcheck Endpoint
+app.get('/health', async (req, res) => {
+  let dbStatus = 'DOWN';
+  if (!isFallback && pool) {
+    try {
+      await pool.query('SELECT 1');
+      dbStatus = 'CONNECTED';
+    } catch (err) {
+      dbStatus = 'ERROR';
+    }
+  } else if (isFallback) {
+    dbStatus = 'IN-MEMORY-FALLBACK';
+  }
+  
+  res.json({
+    status: 'UP',
+    version: appVersion,
+    database: dbStatus,
+    uptime: process.uptime()
+  });
 });
 
-// Start server
+// Global Error Handler (Mask stack traces in production)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled Server Error:', err);
+  if (process.env.NODE_ENV === 'production') {
+    res.status(500).json({ error: 'Internal Server Error' });
+  } else {
+    res.status(500).json({ error: err.message || 'Internal Server Error', stack: err.stack });
+  }
+});
+
+let server: any;
+
+// Start server function
 async function startServer() {
   await initDatabase();
-  app.listen(port, () => {
-    console.log(`HighwayPool Backend Server listening on http://localhost:${port}`);
+  server = app.listen(port, () => {
+    console.log(`HighwayPool Backend Server listening on port ${port} (mode: ${process.env.NODE_ENV || 'development'})`);
   });
 }
 
 startServer().catch(err => {
   console.error('Failed to start HighwayPool backend server:', err);
 });
+
+// Graceful Shutdown Handlers
+function handleGracefulShutdown(signal: string) {
+  console.log(`Received ${signal}. Starting graceful shutdown...`);
+  if (server) {
+    server.close(async () => {
+      console.log('Express HTTP server closed.');
+      try {
+        await closeDatabase();
+        console.log('Database connections ended.');
+        console.log('Graceful shutdown finished. Exiting process.');
+        process.exit(0);
+      } catch (dbErr) {
+        console.error('Error closing database connections during shutdown:', dbErr);
+        process.exit(1);
+      }
+    });
+    
+    // Force shutdown after 10s if hanging
+    setTimeout(() => {
+      console.error('Shutdown timed out. Forcefully exiting.');
+      process.exit(1);
+    }, 10000);
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));

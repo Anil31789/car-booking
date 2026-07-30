@@ -8,6 +8,7 @@ exports.setFallback = setFallback;
 exports.initDatabase = initDatabase;
 exports.dbQuery = dbQuery;
 exports.createNotification = createNotification;
+exports.closeDatabase = closeDatabase;
 const pg_1 = __importDefault(require("pg"));
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
@@ -31,10 +32,18 @@ exports.memoryDb = {
 async function initDatabase() {
     try {
         console.log('Connecting to PostgreSQL database...');
+        const isNeon = connectionString?.includes('neon.tech') || false;
+        const isProd = process.env.NODE_ENV === 'production';
+        const useSsl = isNeon || isProd;
         exports.pool = new Pool({
             connectionString,
-            // Add a short timeout so fallback kicks in quickly if offline
-            connectionTimeoutMillis: 3000,
+            connectionTimeoutMillis: 5000,
+            max: 10,
+            idleTimeoutMillis: 30000,
+            ssl: useSsl ? { rejectUnauthorized: false } : false
+        });
+        exports.pool.on('error', (err) => {
+            console.error('Unexpected error on idle PostgreSQL client:', err);
         });
         // Test connection
         const client = await exports.pool.connect();
@@ -46,6 +55,14 @@ async function initDatabase() {
         await seedDatabaseIfNeeded();
     }
     catch (err) {
+        if (process.env.NODE_ENV === 'production') {
+            console.error('--------------------------------------------------');
+            console.error('FATAL ERROR: Failed to connect to PostgreSQL database in production.');
+            console.error('Error message:', err.message || err);
+            console.error('Application will exit now.');
+            console.error('--------------------------------------------------');
+            process.exit(1);
+        }
         console.warn('--------------------------------------------------');
         console.warn('WARNING: Failed to connect to PostgreSQL database.');
         console.warn('Error message:', err.message || err);
@@ -147,6 +164,15 @@ async function runSchemaDDL() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       booking_id VARCHAR(100) REFERENCES bookings(id) ON DELETE SET NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON vehicles(user_id);
+    CREATE INDEX IF NOT EXISTS idx_rides_driver_id ON rides(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_rides_status ON rides(status);
+    CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings(ride_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_passenger_id ON bookings(passenger_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+    CREATE INDEX IF NOT EXISTS idx_reviews_driver_id ON reviews(driver_id);
   `;
     await exports.pool.query(schemaDDL);
     // Run migrations/ALTER statements if needed
@@ -529,5 +555,12 @@ async function seedDatabaseIfNeeded() {
     }
     finally {
         client.release();
+    }
+}
+async function closeDatabase() {
+    if (exports.pool) {
+        console.log('Closing PostgreSQL connection pool...');
+        await exports.pool.end();
+        console.log('PostgreSQL connection pool closed.');
     }
 }

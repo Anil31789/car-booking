@@ -19,8 +19,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   
   // Resolve SSR relative API request issues
   if (isPlatformServer(platformId) && req.url.startsWith('/api')) {
+    const apiBase = (typeof process !== 'undefined' && process.env && process.env['API_BASE_URL']) 
+      ? process.env['API_BASE_URL'] 
+      : 'http://localhost:5000';
     apiReq = req.clone({
-      url: `http://localhost:5000${req.url}`
+      url: `${apiBase}${req.url}`
     });
   }
   

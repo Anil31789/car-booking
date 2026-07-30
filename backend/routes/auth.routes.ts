@@ -4,7 +4,13 @@ import crypto from 'crypto';
 import { dbQuery, isFallback, memoryDb } from '../db.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'highwaypool_supersecret_jwt_token_key_2026';
+const JWT_SECRET = process.env.NODE_ENV === 'production' 
+  ? process.env.JWT_SECRET! 
+  : (process.env.JWT_SECRET || 'highwaypool_supersecret_jwt_token_key_2026');
+
+if (process.env.NODE_ENV === 'production' && (!JWT_SECRET || JWT_SECRET === 'highwaypool_supersecret_jwt_token_key_2026')) {
+  throw new Error('FATAL SECURITY ERROR: JWT_SECRET must be configured and cannot use the default dev key in production.');
+}
 
 // Helper to sign Access Token (15 mins)
 function generateAccessToken(userId: string, email: string) {
