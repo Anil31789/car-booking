@@ -13,16 +13,39 @@ export class AuthService {
     return this.http.get<User | null>('/api/auth/me');
   }
 
-  login(phone: string): Observable<boolean> {
-    return this.http.post<boolean>('/api/auth/login', { phone });
+  login(email: string, password: string): Observable<{ user: User, token: string, refreshToken: string }> {
+    return this.http.post<{ user: User, token: string, refreshToken: string }>('/api/auth/login', { email, password });
   }
 
   verifyOtp(phone: string, otp: string): Observable<{ user: User, token: string, refreshToken: string }> {
     return this.http.post<{ user: User, token: string, refreshToken: string }>('/api/auth/verify-otp', { phone, otp });
   }
 
-  signup(name: string, email: string, phone: string, license?: string): Observable<{ user: User, token: string, refreshToken: string }> {
-    return this.http.post<{ user: User, token: string, refreshToken: string }>('/api/auth/signup', { name, email, phone, license });
+  register(name: string, email: string, password: string, phone?: string): Observable<{ success: boolean, message: string }> {
+    return this.http.post<{ success: boolean, message: string }>('/api/auth/register', { name, email, password, phone });
+  }
+
+  verifyEmail(token: string, email?: string): Observable<{ success: boolean, message: string }> {
+    const url = email 
+      ? `/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`
+      : `/api/auth/verify-email?token=${token}`;
+    return this.http.get<{ success: boolean, message: string }>(url);
+  }
+
+  googleLogin(idToken: string): Observable<{ user: User, token: string, refreshToken: string }> {
+    return this.http.post<{ user: User, token: string, refreshToken: string }>('/api/auth/google', { idToken });
+  }
+
+  setPassword(password: string): Observable<{ success: boolean, message: string }> {
+    return this.http.post<{ success: boolean, message: string }>('/api/auth/set-password', { password });
+  }
+
+  forgotPassword(email: string): Observable<{ success: boolean, message: string }> {
+    return this.http.post<{ success: boolean, message: string }>('/api/auth/forgot-password', { email });
+  }
+
+  resetPassword(token: string, newPassword: string): Observable<{ success: boolean, message: string }> {
+    return this.http.post<{ success: boolean, message: string }>('/api/auth/reset-password', { token, newPassword });
   }
 
   updateProfileLicense(licenseCode: string): Observable<User> {

@@ -44,7 +44,7 @@ import { AuthService } from '../../../core/services/auth.service';
 
       <div class="cta-actions">
         <button class="ripple-btn full-width" (click)="router.navigate(['/login'])">
-          Login with Mobile
+          Get Started
         </button>
         <button class="ripple-btn btn-secondary full-width" (click)="router.navigate(['/signup'])">
           Create Account

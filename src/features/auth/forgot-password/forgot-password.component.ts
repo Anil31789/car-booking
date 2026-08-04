@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
   selector: 'app-forgot-password',
@@ -17,36 +18,45 @@ import { FormsModule } from '@angular/forms';
 
       <div class="auth-content">
         <h2>Password Recovery</h2>
-        <p>Enter your mobile number and we'll send you an recovery link to log back in</p>
+        <p>Enter your email address and we'll send you a recovery link to reset your password</p>
 
         <form (ngSubmit)="onSubmit()" #recoveryForm="ngForm" class="auth-form">
+          <!-- Error Banner -->
+          <div class="error-banner glass-panel" *ngIf="errorMsg">
+            <span class="material-icons-outlined">error_outline</span>
+            <span>{{ errorMsg }}</span>
+          </div>
+
           <div class="custom-input-group">
-            <label>Mobile Number</label>
+            <label>Email Address</label>
             <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">phone</span>
-              <span class="country-code">+91</span>
+              <span class="material-icons-outlined prefix-icon">email</span>
               <input 
-                type="tel" 
-                placeholder="10-digit number" 
-                [(ngModel)]="phoneNumber" 
-                name="phone"
+                type="email" 
+                placeholder="ramesh@example.com" 
+                [(ngModel)]="email" 
+                name="email"
                 required
-                pattern="^[0-9]{10}$"
-                #phoneInput="ngModel"
+                email
+                #emailInput="ngModel"
                 class="search-input" />
+            </div>
+            <div class="validation-msg" *ngIf="emailInput.invalid && emailInput.touched">
+              Please enter a valid email address.
             </div>
           </div>
 
           <button 
             type="submit" 
             class="ripple-btn submit-btn" 
-            [disabled]="recoveryForm.invalid || success">
-            {{ success ? 'Recovery Link Sent' : 'Send Reset Link' }}
+            [disabled]="recoveryForm.invalid || success || loading">
+            <span class="spinner" *ngIf="loading"></span>
+            {{ success ? 'Recovery Email Sent' : 'Send Reset Link' }}
           </button>
           
           <div class="success-banner" *ngIf="success">
             <span class="material-icons-outlined">check_circle</span>
-            <span>Recovery SMS sent! Check your messages.</span>
+            <span>Recovery email sent! Check your inbox.</span>
           </div>
         </form>
       </div>
@@ -108,6 +118,21 @@ import { FormsModule } from '@angular/forms';
       gap: 20px;
     }
 
+    .error-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background-color: rgba(255, 69, 58, 0.1);
+      border: 1px solid rgba(255, 69, 58, 0.2);
+      color: var(--color-danger);
+      font-size: 0.82rem;
+      font-weight: 600;
+
+      span { font-size: 18px; }
+    }
+
     .custom-input-group {
       display: flex;
       flex-direction: column;
@@ -140,16 +165,7 @@ import { FormsModule } from '@angular/forms';
       .prefix-icon {
         font-size: 20px;
         color: hsl(var(--text-tertiary));
-        margin-right: 8px;
-      }
-
-      .country-code {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: hsl(var(--text-primary));
-        margin-right: 8px;
-        border-right: 1px solid hsl(var(--border-light));
-        padding-right: 8px;
+        margin-right: 12px;
       }
 
       .search-input {
@@ -160,6 +176,13 @@ import { FormsModule } from '@angular/forms';
         font-weight: 600;
         color: hsl(var(--text-primary));
         width: 100%;
+      }
+
+      .validation-msg {
+        font-size: 0.72rem;
+        color: var(--color-danger);
+        font-weight: 600;
+        margin-top: 2px;
       }
     }
 
@@ -197,19 +220,49 @@ import { FormsModule } from '@angular/forms';
         }
       }
     }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   `]
 })
 export class ForgotPasswordComponent {
-  phoneNumber = '';
+  email = '';
   success = false;
+  loading = false;
+  errorMsg = '';
 
+  private authService = inject(AuthService);
   router = inject(Router);
 
   onSubmit() {
-    if (!this.phoneNumber) return;
-    this.success = true;
-    setTimeout(() => {
-      this.router.navigate(['/login']);
-    }, 2000);
+    if (!this.email) return;
+    this.loading = true;
+    this.errorMsg = '';
+    this.success = false;
+
+    this.authService.forgotPassword(this.email).subscribe({
+      next: (res) => {
+        this.loading = false;
+        this.success = true;
+        setTimeout(() => {
+          this.router.navigate(['/login']);
+        }, 3000);
+      },
+      error: (err) => {
+        this.errorMsg = err.error?.error || 'Failed to send recovery email. Please try again.';
+        this.loading = false;
+      }
+    });
   }
 }

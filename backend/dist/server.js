@@ -16,9 +16,22 @@ const ride_routes_js_1 = __importDefault(require("./routes/ride.routes.js"));
 const booking_routes_js_1 = __importDefault(require("./routes/booking.routes.js"));
 const user_routes_js_1 = __importDefault(require("./routes/user.routes.js"));
 const notification_routes_js_1 = __importDefault(require("./routes/notification.routes.js"));
+const email_service_js_1 = require("./services/email.service.js");
 dotenv_1.default.config();
 // Validate required environment variables in production
-const requiredEnv = ['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'ALLOWED_ORIGINS', 'API_BASE_URL', 'LOCATION_PROVIDER'];
+const requiredEnv = [
+    'NODE_ENV',
+    'PORT',
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'ALLOWED_ORIGINS',
+    'API_BASE_URL',
+    'LOCATION_PROVIDER',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'GOOGLE_CALLBACK_URL',
+    'FRONTEND_BASE_URL'
+];
 const missingEnv = requiredEnv.filter(k => !process.env[k]);
 if (process.env.NODE_ENV === 'production') {
     if (missingEnv.length > 0) {
@@ -118,6 +131,9 @@ let server;
 // Start server function
 async function startServer() {
     await (0, db_js_1.initDatabase)();
+    if (email_service_js_1.emailProvider.verifyConnection) {
+        await email_service_js_1.emailProvider.verifyConnection();
+    }
     server = app.listen(port, () => {
         console.log(`HighwayPool Backend Server listening on port ${port} (mode: ${process.env.NODE_ENV || 'development'})`);
     });

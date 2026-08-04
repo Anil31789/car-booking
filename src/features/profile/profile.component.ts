@@ -97,6 +97,63 @@ import { DonateDialogComponent } from './donate-dialog.component';
         </div>
       </section>
 
+      <!-- Security Settings -->
+      <section class="profile-section glass-panel">
+        <h4 class="section-title">Security & Account</h4>
+        
+        <!-- Setup Password -->
+        <div class="setting-row" style="flex-direction: column; align-items: stretch; gap: 12px; padding: 12px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div class="setting-meta">
+              <span class="setting-title">Account Password</span>
+              <span class="setting-sub">Set password for email login capability</span>
+            </div>
+            
+            <button 
+              type="button" 
+              class="ripple-btn" 
+              style="padding: 8px 16px; font-size: 0.8rem; background-color: var(--color-primary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+              (click)="showPasswordForm = !showPasswordForm">
+              {{ showPasswordForm ? 'Cancel' : 'Set Password' }}
+            </button>
+          </div>
+
+          <!-- Password Setup Inline Form -->
+          <div class="password-setup-form slide-in" *ngIf="showPasswordForm" style="margin-top: 10px; border-top: 1px solid hsl(var(--border-light)); padding-top: 16px; width: 100%;">
+            <form (ngSubmit)="savePassword()" #passForm="ngForm" style="display: flex; flex-direction: column; gap: 12px;">
+              <div class="custom-input-group" style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: hsl(var(--text-tertiary)); text-transform: uppercase;">Choose Password</label>
+                <div class="input-wrapper" style="display: flex; align-items: center; border: 1px solid hsl(var(--border-light)); border-radius: var(--border-radius-sm); padding: 10px 12px; background-color: hsl(var(--bg-secondary));">
+                  <input 
+                    type="password" 
+                    placeholder="Min 8 characters" 
+                    [(ngModel)]="newPassword" 
+                    name="newPassword"
+                    required
+                    minlength="8"
+                    #newPassInput="ngModel"
+                    style="border: none; background: none; outline: none; font-size: 0.9rem; color: hsl(var(--text-primary)); width: 100%;" />
+                </div>
+              </div>
+              <button 
+                type="submit" 
+                class="ripple-btn" 
+                [disabled]="passForm.invalid || passLoading"
+                style="padding: 10px; width: 100%; font-size: 0.85rem; border: none; border-radius: 4px; background-color: var(--color-primary); color: white; cursor: pointer;">
+                {{ passLoading ? 'Saving password...' : 'Save Password' }}
+              </button>
+              
+              <div style="font-size: 0.78rem; color: var(--color-secondary); font-weight: 600; text-align: center; margin-top: 4px;" *ngIf="passSuccess">
+                Password configured successfully!
+              </div>
+              <div style="font-size: 0.78rem; color: var(--color-danger); font-weight: 600; text-align: center; margin-top: 4px;" *ngIf="passError">
+                {{ passError }}
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <!-- Legal and community settings section -->
       <section class="profile-section glass-panel">
         <h4 class="section-title">Legal & Community</h4>
@@ -484,6 +541,35 @@ export class ProfileComponent {
   licenseCode = '';
   loading = false;
   confirmLogout = false;
+
+  // Security password config logic
+  showPasswordForm = false;
+  newPassword = '';
+  passLoading = false;
+  passSuccess = false;
+  passError = '';
+
+  savePassword() {
+    if (!this.newPassword || this.newPassword.length < 8) return;
+    this.passLoading = true;
+    this.passSuccess = false;
+    this.passError = '';
+    this.authService.setPassword(this.newPassword).subscribe({
+      next: () => {
+        this.passLoading = false;
+        this.passSuccess = true;
+        this.newPassword = '';
+        setTimeout(() => {
+          this.showPasswordForm = false;
+          this.passSuccess = false;
+        }, 3000);
+      },
+      error: (err) => {
+        this.passError = err.error?.error || 'Failed to save password. Please try again.';
+        this.passLoading = false;
+      }
+    });
+  }
 
   openLegal(type: 'about' | 'terms' | 'privacy' | 'guidelines') {
     this.dialog.open(LegalDialogComponent, {

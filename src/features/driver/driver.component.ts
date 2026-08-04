@@ -8,6 +8,7 @@ import { BookingStore } from '../../core/store/booking.store';
 import { Stop } from '../../core/models/ride.models';
 import { LocationAutocompleteComponent } from '../../shared/components/location-autocomplete.component';
 import { RideService } from '../../core/services/ride.service';
+import { AuthService } from '../../core/services/auth.service';
 
 interface PassengerRequest {
   id: string;
@@ -193,7 +194,50 @@ interface PassengerRequest {
 
       <!-- TAB 2: Offer Ride Publishing Form -->
       <div class="tab-content scrollable-form" *ngIf="activeTab === 'publish'">
-        <div class="publish-card glass-panel">
+        
+        <!-- Case A: User has NO driving license on file -> show verification overlay prompt -->
+        <div class="publish-card glass-panel prompt-card fade-in" *ngIf="!hasLicense()" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+          <div style="text-align: center; margin-bottom: 12px;">
+            <span class="material-icons-outlined" style="font-size: 56px; color: var(--color-primary); margin-bottom: 12px;">badge</span>
+            <h3 class="section-title" style="margin-bottom: 8px;">Driving License Verification</h3>
+            <p style="font-size: 0.88rem; color: hsl(var(--text-secondary)); line-height: 1.45;">
+              To start offering rides and sharing your trips on HighwayPool, please submit your valid Driving License number for verification.
+            </p>
+          </div>
+          
+          <form (ngSubmit)="submitLicense()" #licenseSubmitForm="ngForm" class="license-prompt-form" style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="custom-input-group">
+              <label>Driving License Number</label>
+              <div class="input-wrapper" style="display: flex; align-items: center; border: 1px solid hsl(var(--border-light)); border-radius: var(--border-radius-sm); padding: 12px 14px; background-color: hsl(var(--bg-secondary));">
+                <span class="material-icons-outlined prefix-icon" style="font-size: 20px; color: hsl(var(--text-tertiary)); margin-right: 12px;">tag</span>
+                <input 
+                  type="text" 
+                  placeholder="e.g. DL-1420110068732" 
+                  [(ngModel)]="tempLicenseNumber" 
+                  name="licenseNumber"
+                  required
+                  minlength="5"
+                  #licenseInput="ngModel"
+                  style="border: none; background: none; outline: none; font-size: 0.95rem; font-weight: 600; color: hsl(var(--text-primary)); width: 100%;" />
+              </div>
+              <div class="validation-msg" *ngIf="licenseInput.invalid && licenseInput.touched" style="font-size: 0.72rem; color: var(--color-danger); font-weight: 600; margin-top: 2px;">
+                A valid driving license number is required.
+              </div>
+            </div>
+            
+            <button 
+              type="submit" 
+              class="ripple-btn submit-btn" 
+              [disabled]="licenseSubmitForm.invalid || licenseLoading"
+              style="width: 100%; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span class="spinner" *ngIf="licenseLoading"></span>
+              {{ licenseLoading ? 'Submitting Details...' : 'Submit & Offer Ride' }}
+            </button>
+          </form>
+        </div>
+
+        <!-- Case B: User has a license -> show original publish form -->
+        <div class="publish-card glass-panel" *ngIf="hasLicense()">
           <h3 class="section-title" style="margin-bottom: 20px">Offer a Ride</h3>
           
           <form (ngSubmit)="onPublish()" #publishForm="ngForm" class="publish-form">
@@ -280,44 +324,54 @@ interface PassengerRequest {
                 <label>Price per Seat (₹)</label>
                 <div class="input-wrapper">
                   <span class="material-icons-outlined prefix-icon">payments</span>
-                  <input type="number" [(ngModel)]="price" name="price" required min="100" class="form-input-number" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Vehicle Selection Dropdown -->
-            <div class="custom-input-group">
-              <label>Select Registered Vehicle</label>
-              <div class="input-wrapper">
-                <span class="material-icons-outlined prefix-icon">directions_car</span>
-                <select [(ngModel)]="selectedVehicleId" name="selectedVehicleId" (change)="onVehicleSelectChange()" required class="form-select">
-                  <option *ngFor="let veh of authStore.currentUser()?.registeredVehicles" [value]="veh.id">
-                    {{ veh.model }} ({{ veh.numberPlate }}) - {{ veh.color }}
-                  </option>
-                  <option value="custom">Enter Custom Vehicle...</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Vehicle Details Form (visible and auto-populated) -->
-            <div class="vehicle-details-subform slide-in">
-              <!-- Vehicle Name/Model -->
-              <div class="custom-input-group">
-                <label>Vehicle Name / Model</label>
-                <div class="input-wrapper">
-                  <span class="material-icons-outlined prefix-icon">badge</span>
                   <input 
-                    type="text" 
-                    placeholder="e.g. BMW 3 Series" 
-                    [(ngModel)]="vehicleModel" 
-                    name="vehicleModel" 
+                    type="number" 
+                    placeholder="e.g. 350" 
+                    [(ngModel)]="price" 
+                    name="price" 
                     required 
+                    min="50" 
                     class="form-input" />
                 </div>
               </div>
+            </div>
 
-              <!-- Vehicle Type & Color row -->
+            <!-- Vehicle selection segment -->
+            <div class="vehicle-selection-card">
+              <h4 class="card-subtitle">Vehicle Details</h4>
+              
+              <div class="custom-input-group" style="margin-bottom: 14px">
+                <label>Select Vehicle</label>
+                <div class="input-wrapper">
+                  <span class="material-icons-outlined prefix-icon">directions_car</span>
+                  <select 
+                    [(ngModel)]="selectedVehicleId" 
+                    name="selectedVehicle" 
+                    (change)="onVehicleSelectChange()" 
+                    class="form-select">
+                    <option value="custom">New / Other Vehicle</option>
+                    <option *ngFor="let veh of authStore.currentUser()?.registeredVehicles" [value]="veh.id">
+                      {{ veh.model }} ({{ veh.numberPlate }})
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Double row for vehicle specs -->
               <div class="form-double-row">
+                <div class="custom-input-group">
+                  <label>Vehicle Model</label>
+                  <div class="input-wrapper">
+                    <span class="material-icons-outlined prefix-icon">label</span>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Honda City" 
+                      [(ngModel)]="vehicleModel" 
+                      name="vehicleModel" 
+                      required 
+                      class="form-input" />
+                  </div>
+                </div>
                 <div class="custom-input-group">
                   <label>Vehicle Type</label>
                   <div class="input-wrapper">
@@ -329,6 +383,23 @@ interface PassengerRequest {
                       <option value="EV">EV</option>
                       <option value="Luxury">Luxury</option>
                     </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Vehicle Registration & Color -->
+              <div class="form-double-row">
+                <div class="custom-input-group">
+                  <label>Vehicle Registration Number</label>
+                  <div class="input-wrapper">
+                    <span class="material-icons-outlined prefix-icon">tag</span>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. MH-12-AB-2049" 
+                      [(ngModel)]="vehicleNumber" 
+                      name="vehicleNumber" 
+                      required 
+                      class="form-input" />
                   </div>
                 </div>
                 <div class="custom-input-group">
@@ -343,21 +414,6 @@ interface PassengerRequest {
                       required 
                       class="form-input" />
                   </div>
-                </div>
-              </div>
-
-              <!-- Vehicle Registration Number -->
-              <div class="custom-input-group">
-                <label>Vehicle Registration Number</label>
-                <div class="input-wrapper">
-                  <span class="material-icons-outlined prefix-icon">tag</span>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. MH-12-AB-2049" 
-                    [(ngModel)]="vehicleNumber" 
-                    name="vehicleNumber" 
-                    required 
-                    class="form-input" />
                 </div>
               </div>
             </div>
@@ -957,11 +1013,37 @@ export class DriverComponent implements OnInit {
   authStore = inject(AuthStore);
   bookingStore = inject(BookingStore);
   rideService = inject(RideService);
+  authService = inject(AuthService);
   router = inject(Router);
   platformId = inject(PLATFORM_ID);
 
   activeTab: 'listings' | 'publish' = 'listings';
   confirmMarkPaidId: string | null = null;
+  
+  // Driving License prompt logic
+  tempLicenseNumber = '';
+  licenseLoading = false;
+
+  hasLicense(): boolean {
+    const user = this.authStore.currentUser();
+    return !!(user?.licensePlaceholder || user?.driverDetails?.licenseNumber);
+  }
+
+  submitLicense() {
+    if (!this.tempLicenseNumber) return;
+    this.licenseLoading = true;
+    this.authService.updateProfileLicense(this.tempLicenseNumber).subscribe({
+      next: (updatedUser) => {
+        this.authStore.setCurrentUser(updatedUser);
+        this.licenseLoading = false;
+        this.tempLicenseNumber = '';
+      },
+      error: (err) => {
+        console.error('Failed to submit driving license:', err);
+        this.licenseLoading = false;
+      }
+    });
+  }
   confirmCancelOfferId: string | null = null;
 
   // Publish Form parameters

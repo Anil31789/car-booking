@@ -13,11 +13,24 @@ import rideRoutes from './routes/ride.routes.js';
 import bookingRoutes from './routes/booking.routes.js';
 import userRoutes from './routes/user.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import { emailProvider } from './services/email.service.js';
 
 dotenv.config();
 
 // Validate required environment variables in production
-const requiredEnv = ['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'ALLOWED_ORIGINS', 'API_BASE_URL', 'LOCATION_PROVIDER'];
+const requiredEnv = [
+  'NODE_ENV',
+  'PORT',
+  'DATABASE_URL',
+  'JWT_SECRET',
+  'ALLOWED_ORIGINS',
+  'API_BASE_URL',
+  'LOCATION_PROVIDER',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_CALLBACK_URL',
+  'FRONTEND_BASE_URL'
+];
 const missingEnv = requiredEnv.filter(k => !process.env[k]);
 
 if (process.env.NODE_ENV === 'production') {
@@ -127,6 +140,11 @@ let server: any;
 // Start server function
 async function startServer() {
   await initDatabase();
+  
+  if (emailProvider.verifyConnection) {
+    await emailProvider.verifyConnection();
+  }
+
   server = app.listen(port, () => {
     console.log(`HighwayPool Backend Server listening on port ${port} (mode: ${process.env.NODE_ENV || 'development'})`);
   });

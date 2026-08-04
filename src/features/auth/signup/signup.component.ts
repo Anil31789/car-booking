@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../core/services/auth.service';
-import { AuthStore } from '../../../core/store/auth.store';
 
 @Component({
   selector: 'app-signup',
@@ -12,101 +11,141 @@ import { AuthStore } from '../../../core/store/auth.store';
   template: `
     <div class="auth-page fade-in">
       <header class="auth-header">
-        <button class="back-btn" (click)="router.navigate(['/welcome'])">
+        <button class="back-btn" (click)="router.navigate(['/welcome'])" *ngIf="!success">
           <span class="material-icons-outlined">arrow_back</span>
         </button>
       </header>
 
       <div class="auth-content">
-        <h2>Create Account</h2>
-        <p>Join HighwayPool to share commutes and cut costs</p>
-
-        <form (ngSubmit)="onSubmit()" #signupForm="ngForm" class="auth-form">
-          <!-- Full Name -->
-          <div class="custom-input-group">
-            <label>Full Name</label>
-            <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">person</span>
-              <input 
-                type="text" 
-                placeholder="e.g. Ramesh Kumar" 
-                [(ngModel)]="name" 
-                name="name"
-                required
-                #nameInput="ngModel"
-                class="search-input" />
-            </div>
-          </div>
-
-          <!-- Email Address -->
-          <div class="custom-input-group">
-            <label>Email Address</label>
-            <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">email</span>
-              <input 
-                type="email" 
-                placeholder="ramesh@example.com" 
-                [(ngModel)]="email" 
-                name="email"
-                required
-                email
-                #emailInput="ngModel"
-                class="search-input" />
-            </div>
-            <div class="validation-msg" *ngIf="emailInput.invalid && emailInput.touched">
-              Please enter a valid email address.
-            </div>
-          </div>
-
-          <!-- Phone Number -->
-          <div class="custom-input-group">
-            <label>Mobile Number</label>
-            <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">phone</span>
-              <span class="country-code">+91</span>
-              <input 
-                type="tel" 
-                placeholder="10-digit number" 
-                [(ngModel)]="phone" 
-                name="phone"
-                required
-                pattern="^[0-9]{10}$"
-                #phoneInput="ngModel"
-                class="search-input" />
-            </div>
-            <div class="validation-msg" *ngIf="phoneInput.invalid && phoneInput.touched">
-              Please enter a valid 10-digit mobile number.
-            </div>
-          </div>
-
-          <!-- Optional License Number -->
-          <div class="custom-input-group">
-            <label>Driving License (Optional)</label>
-            <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">badge</span>
-              <input 
-                type="text" 
-                placeholder="e.g. DL-123456MH" 
-                [(ngModel)]="license" 
-                name="license"
-                class="search-input" />
-            </div>
-            <div class="helper-text">
-              Add a license to register as a Driver and offer rides.
-            </div>
-          </div>
-
-          <button 
-            type="submit" 
-            class="ripple-btn submit-btn" 
-            [disabled]="signupForm.invalid || loading">
-            <span class="spinner" *ngIf="loading"></span>
-            {{ loading ? 'Creating Account...' : 'Sign Up' }}
+        <!-- Success State: Verification Email Sent -->
+        <div class="success-state glass-panel fade-in" *ngIf="success">
+          <span class="material-icons-outlined success-icon">mark_email_read</span>
+          <h2>Verify Your Email</h2>
+          <p>We've sent a verification link to <strong>{{ email }}</strong>. Please check your inbox and click the link to activate your account.</p>
+          <button class="ripple-btn submit-btn" (click)="router.navigate(['/login'])">
+            Go to Login
           </button>
-        </form>
+        </div>
+
+        <!-- Signup Form -->
+        <div class="form-wrapper" *ngIf="!success">
+          <h2>Create Account</h2>
+          <p>Join HighwayPool to share commutes and cut costs</p>
+
+          <!-- Error Banner -->
+          <div class="error-banner glass-panel" *ngIf="errorMsg">
+            <span class="material-icons-outlined">error_outline</span>
+            <span>{{ errorMsg }}</span>
+          </div>
+
+          <form (ngSubmit)="onSubmit()" #signupForm="ngForm" class="auth-form">
+            <!-- Full Name -->
+            <div class="custom-input-group">
+              <label>Full Name</label>
+              <div class="input-wrapper">
+                <span class="material-icons-outlined prefix-icon">person</span>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Ramesh Kumar" 
+                  [(ngModel)]="name" 
+                  name="name"
+                  required
+                  #nameInput="ngModel"
+                  class="search-input" />
+              </div>
+            </div>
+
+            <!-- Email Address -->
+            <div class="custom-input-group">
+              <label>Email Address</label>
+              <div class="input-wrapper">
+                <span class="material-icons-outlined prefix-icon">email</span>
+                <input 
+                  type="email" 
+                  placeholder="ramesh@example.com" 
+                  [(ngModel)]="email" 
+                  name="email"
+                  required
+                  email
+                  #emailInput="ngModel"
+                  class="search-input" />
+              </div>
+              <div class="validation-msg" *ngIf="emailInput.invalid && emailInput.touched">
+                Please enter a valid email address.
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div class="custom-input-group">
+              <label>Password</label>
+              <div class="input-wrapper">
+                <span class="material-icons-outlined prefix-icon">lock</span>
+                <input 
+                  type="password" 
+                  placeholder="Min 8 characters" 
+                  [(ngModel)]="password" 
+                  name="password"
+                  required
+                  minlength="8"
+                  #passwordInput="ngModel"
+                  class="search-input" />
+              </div>
+              <div class="validation-msg" *ngIf="passwordInput.invalid && passwordInput.touched">
+                Password must be at least 8 characters long.
+              </div>
+            </div>
+
+            <!-- Confirm Password -->
+            <div class="custom-input-group">
+              <label>Confirm Password</label>
+              <div class="input-wrapper">
+                <span class="material-icons-outlined prefix-icon">lock_open</span>
+                <input 
+                  type="password" 
+                  placeholder="Re-enter password" 
+                  [(ngModel)]="confirmPassword" 
+                  name="confirmPassword"
+                  required
+                  #confirmInput="ngModel"
+                  class="search-input" />
+              </div>
+              <div class="validation-msg" *ngIf="confirmInput.touched && password !== confirmPassword">
+                Passwords do not match.
+              </div>
+            </div>
+
+            <!-- Optional Phone Number -->
+            <div class="custom-input-group">
+              <label>Mobile Number (Optional)</label>
+              <div class="input-wrapper">
+                <span class="material-icons-outlined prefix-icon">phone</span>
+                <span class="country-code">+91</span>
+                <input 
+                  type="tel" 
+                  placeholder="10-digit number" 
+                  [(ngModel)]="phone" 
+                  name="phone"
+                  pattern="^[0-9]{10}$"
+                  #phoneInput="ngModel"
+                  class="search-input" />
+              </div>
+              <div class="validation-msg" *ngIf="phoneInput.invalid && phoneInput.touched && phone">
+                Please enter a valid 10-digit mobile number.
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              class="ripple-btn submit-btn" 
+              [disabled]="signupForm.invalid || (password !== confirmPassword) || loading">
+              <span class="spinner" *ngIf="loading"></span>
+              {{ loading ? 'Creating Account...' : 'Sign Up' }}
+            </button>
+          </form>
+        </div>
       </div>
 
-      <div class="footer-links">
+      <div class="footer-links" *ngIf="!success">
         <span>Already have an account? <strong (click)="router.navigate(['/login'])">Log In</strong></span>
       </div>
     </div>
@@ -157,6 +196,44 @@ import { AuthStore } from '../../../core/store/auth.store';
       }
     }
 
+    .success-state {
+      text-align: center;
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      background-color: hsl(var(--bg-secondary));
+      border: 1px solid hsl(var(--border-light));
+      border-radius: var(--border-radius-md);
+
+      .success-icon {
+        font-size: 64px;
+        color: var(--color-secondary);
+        filter: drop-shadow(0 4px 10px rgba(52, 199, 89, 0.2));
+      }
+
+      p {
+        margin-bottom: 10px;
+      }
+    }
+
+    .error-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background-color: rgba(255, 69, 58, 0.1);
+      border: 1px solid rgba(255, 69, 58, 0.2);
+      color: var(--color-danger);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+
+      span { font-size: 18px; }
+    }
+
     .auth-form {
       display: flex;
       flex-direction: column;
@@ -195,7 +272,7 @@ import { AuthStore } from '../../../core/store/auth.store';
       .prefix-icon {
         font-size: 20px;
         color: hsl(var(--text-tertiary));
-        margin-right: 8px;
+        margin-right: 12px;
       }
 
       .country-code {
@@ -221,13 +298,6 @@ import { AuthStore } from '../../../core/store/auth.store';
         font-size: 0.72rem;
         color: var(--color-danger);
         font-weight: 600;
-        margin-top: 2px;
-      }
-
-      .helper-text {
-        font-size: 0.7rem;
-        color: hsl(var(--text-tertiary));
-        font-weight: 500;
         margin-top: 2px;
       }
     }
@@ -270,26 +340,31 @@ import { AuthStore } from '../../../core/store/auth.store';
 export class SignupComponent {
   name = '';
   email = '';
+  password = '';
+  confirmPassword = '';
   phone = '';
-  license = '';
   loading = false;
+  success = false;
+  errorMsg = '';
 
   private authService = inject(AuthService);
-  private authStore = inject(AuthStore);
   router = inject(Router);
 
   onSubmit() {
-    if (!this.name || !this.email || !this.phone) return;
+    if (!this.name || !this.email || !this.password || (this.password !== this.confirmPassword)) return;
     this.loading = true;
-    const phoneNo = `+91 ${this.phone.trim()}`;
-    this.authService.signup(this.name, this.email, phoneNo, this.license).subscribe({
-      next: (res) => {
-        this.authStore.setCurrentUser(res.user);
-        this.authStore.setSession(res.token, res.refreshToken);
+    this.errorMsg = '';
+    
+    const phoneNo = this.phone ? `+91 ${this.phone.trim()}` : undefined;
+    this.authService.register(this.name, this.email, this.password, phoneNo).subscribe({
+      next: () => {
         this.loading = false;
-        this.router.navigate(['/']);
+        this.success = true;
       },
-      error: () => this.loading = false
+      error: (err) => {
+        this.errorMsg = err.error?.error || 'Registration failed. Please try again.';
+        this.loading = false;
+      }
     });
   }
 }

@@ -220,6 +220,46 @@ async function runSchemaDDL() {
         END IF;
       END $$;
     `);
+
+    // 5. Add authentication columns and alter constraints on users table
+    await pool.query(`
+      ALTER TABLE users ALTER COLUMN phone DROP NOT NULL;
+      
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email_verified') THEN
+          ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE;
+        END IF;
+        
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='password_hash') THEN
+          ALTER TABLE users ADD COLUMN password_hash VARCHAR(255);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='google_id') THEN
+          ALTER TABLE users ADD COLUMN google_id VARCHAR(100) UNIQUE;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='auth_provider') THEN
+          ALTER TABLE users ADD COLUMN auth_provider VARCHAR(20) DEFAULT 'local';
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email_verification_token') THEN
+          ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(100);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email_verification_expiry') THEN
+          ALTER TABLE users ADD COLUMN email_verification_expiry TIMESTAMP;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='password_reset_token') THEN
+          ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(100);
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='password_reset_expiry') THEN
+          ALTER TABLE users ADD COLUMN password_reset_expiry TIMESTAMP;
+        END IF;
+      END $$;
+    `);
   } catch (migErr) {
     console.error('Migration error (non-fatal if tables did not exist yet):', migErr);
   }
@@ -373,7 +413,10 @@ function getMockDataSet() {
       license_number: `DL-XXXXXX${4000 + i}`,
       is_license_verified: i % 4 !== 0,
       joined_date: `Feb 2024`,
-      trips_count: 20 + Math.floor(Math.random() * 80)
+      trips_count: 20 + Math.floor(Math.random() * 80),
+      email_verified: true,
+      password_hash: '$2b$10$V.0e99X5g/UR8QsyYXsKp.Ih10PvKzmsZlsVA9p00FeBciA6fZY0C',
+      auth_provider: 'local'
     });
 
     const vehId = `veh_drv_${i + 1}_1`;
@@ -461,7 +504,10 @@ function getMockDataSet() {
     license_number: 'DL-812398MH',
     is_license_verified: true,
     joined_date: 'Jan 2025',
-    trips_count: 0
+    trips_count: 0,
+    email_verified: true,
+    password_hash: '$2b$10$V.0e99X5g/UR8QsyYXsKp.Ih10PvKzmsZlsVA9p00FeBciA6fZY0C',
+    auth_provider: 'local'
   };
   drivers.push(defaultUser);
 
@@ -567,9 +613,12 @@ async function seedDatabaseIfNeeded() {
     // Insert Users
     for (const u of data.drivers) {
       await client.query(
-        `INSERT INTO users (id, name, email, phone, photo_url, is_mobile_verified, is_email_verified, license_placeholder, rating, reviews_count, license_number, is_license_verified, joined_date, trips_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [u.id, u.name, u.email, u.phone, u.photo_url, u.is_mobile_verified, u.is_email_verified, u.license_placeholder, u.rating, u.reviews_count, u.license_number, u.is_license_verified, u.joined_date, u.trips_count]
+        `INSERT INTO users (id, name, email, phone, photo_url, is_mobile_verified, is_email_verified, license_placeholder, rating, reviews_count, license_number, is_license_verified, joined_date, trips_count, email_verified, password_hash, auth_provider)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+        [
+          u.id, u.name, u.email, u.phone, u.photo_url, u.is_mobile_verified, u.is_email_verified, u.license_placeholder, u.rating, u.reviews_count, u.license_number, u.is_license_verified, u.joined_date, u.trips_count,
+          true, '$2b$10$V.0e99X5g/UR8QsyYXsKp.Ih10PvKzmsZlsVA9p00FeBciA6fZY0C', 'local'
+        ]
       );
     }
     

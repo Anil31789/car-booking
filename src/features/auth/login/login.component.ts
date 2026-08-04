@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -21,29 +21,66 @@ import { AuthStore } from '../../../core/store/auth.store';
         <h2>Welcome Back</h2>
         <p>Login to search, share, and pool rides instantly</p>
 
+        <!-- Error Banner -->
+        <div class="error-banner glass-panel" *ngIf="errorMsg">
+          <span class="material-icons-outlined">error_outline</span>
+          <span>{{ errorMsg }}</span>
+        </div>
+
+        <!-- Google Sign-In Button Container -->
+        <div class="google-login-container">
+          <div id="google-signin-btn"></div>
+        </div>
+
+        <div class="auth-divider">
+          <span class="line"></span>
+          <span class="text">or use email</span>
+          <span class="line"></span>
+        </div>
+
         <form (ngSubmit)="onSubmit()" #loginForm="ngForm" class="auth-form">
+          <!-- Email Address -->
           <div class="custom-input-group">
-            <label>Mobile Number</label>
+            <label>Email Address</label>
             <div class="input-wrapper">
-              <span class="material-icons-outlined prefix-icon">phone</span>
-              <span class="country-code">+91</span>
+              <span class="material-icons-outlined prefix-icon">email</span>
               <input 
-                type="tel" 
-                placeholder="10-digit number" 
-                [(ngModel)]="phoneNumber" 
-                name="phone"
+                type="email" 
+                placeholder="ramesh@example.com" 
+                [(ngModel)]="email" 
+                name="email"
                 required
-                pattern="^[0-9]{10}$"
-                #phoneInput="ngModel"
+                email
+                #emailInput="ngModel"
                 class="search-input" />
             </div>
-            <div class="validation-msg" *ngIf="phoneInput.invalid && phoneInput.touched">
-              Please enter a valid 10-digit mobile number.
+            <div class="validation-msg" *ngIf="emailInput.invalid && emailInput.touched">
+              Please enter a valid email address.
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div class="custom-input-group">
+            <label>Password</label>
+            <div class="input-wrapper">
+              <span class="material-icons-outlined prefix-icon">lock</span>
+              <input 
+                type="password" 
+                placeholder="Enter password" 
+                [(ngModel)]="password" 
+                name="password"
+                required
+                minlength="8"
+                #passwordInput="ngModel"
+                class="search-input" />
+            </div>
+            <div class="validation-msg" *ngIf="passwordInput.invalid && passwordInput.touched">
+              Password must be at least 8 characters long.
             </div>
           </div>
 
           <div class="form-links">
-            <span class="forgot-link" (click)="router.navigate(['/forgot-password'])">Trouble logging in?</span>
+            <span class="forgot-link" (click)="router.navigate(['/forgot-password'])">Forgot Password?</span>
           </div>
 
           <button 
@@ -51,7 +88,7 @@ import { AuthStore } from '../../../core/store/auth.store';
             class="ripple-btn submit-btn" 
             [disabled]="loginForm.invalid || loading">
             <span class="spinner" *ngIf="loading"></span>
-            {{ loading ? 'Sending OTP...' : 'Send OTP via SMS' }}
+            {{ loading ? 'Logging In...' : 'Log In' }}
           </button>
         </form>
       </div>
@@ -107,6 +144,51 @@ import { AuthStore } from '../../../core/store/auth.store';
       }
     }
 
+    .google-login-container {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      height: 44px;
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+
+      .line {
+        flex: 1;
+        height: 1px;
+        background-color: hsl(var(--border-light));
+      }
+
+      .text {
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: hsl(var(--text-tertiary));
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+    }
+
+    .error-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background-color: rgba(255, 69, 58, 0.1);
+      border: 1px solid rgba(255, 69, 58, 0.2);
+      color: var(--color-danger);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+
+      span { font-size: 18px; }
+    }
+
     .auth-form {
       display: flex;
       flex-direction: column;
@@ -145,16 +227,7 @@ import { AuthStore } from '../../../core/store/auth.store';
       .prefix-icon {
         font-size: 20px;
         color: hsl(var(--text-tertiary));
-        margin-right: 8px;
-      }
-
-      .country-code {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: hsl(var(--text-primary));
-        margin-right: 8px;
-        border-right: 1px solid hsl(var(--border-light));
-        padding-right: 8px;
+        margin-right: 12px;
       }
 
       .search-input {
@@ -221,28 +294,78 @@ import { AuthStore } from '../../../core/store/auth.store';
     }
   `]
 })
-export class LoginComponent {
-  phoneNumber = '';
+export class LoginComponent implements OnInit {
+  email = '';
+  password = '';
   loading = false;
+  errorMsg = '';
 
   private authService = inject(AuthService);
   private authStore = inject(AuthStore);
   router = inject(Router);
 
-  onSubmit() {
-    if (!this.phoneNumber) return;
-    this.loading = true;
-    const phone = `+91 ${this.phoneNumber.trim()}`;
+  ngOnInit() {
+    if (typeof window !== 'undefined') {
+      if ((window as any).google) {
+        this.initGoogleSignIn();
+      } else {
+        const interval = setInterval(() => {
+          if ((window as any).google) {
+            this.initGoogleSignIn();
+            clearInterval(interval);
+          }
+        }, 300);
+      }
+    }
+  }
+
+  initGoogleSignIn() {
+    (window as any).google.accounts.id.initialize({
+      client_id: '999888777-mockclientid.apps.googleusercontent.com', // fallback/mock client ID
+      callback: (response: any) => this.handleGoogleCredentialResponse(response)
+    });
     
-    // Bypass OTP screen: verify immediately and redirect to dashboard/home page
-    this.authService.verifyOtp(phone, '123456').subscribe({
+    const btnContainer = document.getElementById('google-signin-btn');
+    if (btnContainer) {
+      (window as any).google.accounts.id.renderButton(
+        btnContainer,
+        { theme: 'outline', size: 'large', width: 320 }
+      );
+    }
+  }
+
+  handleGoogleCredentialResponse(response: any) {
+    this.loading = true;
+    this.errorMsg = '';
+    
+    this.authService.googleLogin(response.credential).subscribe({
       next: (res) => {
         this.authStore.setCurrentUser(res.user);
         this.authStore.setSession(res.token, res.refreshToken);
         this.loading = false;
         this.router.navigate(['/']);
       },
-      error: () => {
+      error: (err) => {
+        this.errorMsg = err.error?.error || 'Google Login failed. Please try again.';
+        this.loading = false;
+      }
+    });
+  }
+
+  onSubmit() {
+    if (!this.email || !this.password) return;
+    this.loading = true;
+    this.errorMsg = '';
+
+    this.authService.login(this.email, this.password).subscribe({
+      next: (res) => {
+        this.authStore.setCurrentUser(res.user);
+        this.authStore.setSession(res.token, res.refreshToken);
+        this.loading = false;
+        this.router.navigate(['/']);
+      },
+      error: (err) => {
+        this.errorMsg = err.error?.error || 'Authentication failed. Please verify credentials.';
         this.loading = false;
       }
     });

@@ -20,6 +20,11 @@ export const routes: Routes = [
     canActivate: [guestGuard]
   },
   {
+    path: 'verify-email',
+    loadComponent: () => import('../features/auth/signup/verify-email.component').then(m => m.VerifyEmailComponent),
+    canActivate: [guestGuard]
+  },
+  {
     path: 'otp',
     loadComponent: () => import('../features/auth/otp/otp.component').then(m => m.OtpComponent),
     canActivate: [guestGuard]
@@ -27,6 +32,11 @@ export const routes: Routes = [
   {
     path: 'forgot-password',
     loadComponent: () => import('../features/auth/forgot-password/forgot-password.component').then(m => m.ForgotPasswordComponent),
+    canActivate: [guestGuard]
+  },
+  {
+    path: 'reset-password',
+    loadComponent: () => import('../features/auth/forgot-password/reset-password.component').then(m => m.ResetPasswordComponent),
     canActivate: [guestGuard]
   },
 
