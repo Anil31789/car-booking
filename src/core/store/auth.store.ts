@@ -26,6 +26,20 @@ export class AuthStore {
   initAuth(): Promise<void> {
     return new Promise<void>((resolve) => {
       if (isPlatformBrowser(this.platformId)) {
+        // Parse token and refreshToken from URL if present (Google OAuth Redirect callback)
+        if (typeof window !== 'undefined' && window.location.pathname === '/auth/google/success' && window.location.search) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlToken = urlParams.get('token');
+          const urlRefreshToken = urlParams.get('refreshToken');
+          
+          if (urlToken) {
+            localStorage.setItem('jwt_token', urlToken);
+            if (urlRefreshToken) {
+              localStorage.setItem('refresh_token', urlRefreshToken);
+            }
+          }
+        }
+
         const storedToken = localStorage.getItem('jwt_token');
         const storedRefreshToken = localStorage.getItem('refresh_token');
         

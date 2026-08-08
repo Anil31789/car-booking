@@ -29,7 +29,10 @@ import { AuthStore } from '../../../core/store/auth.store';
 
         <!-- Google Sign-In Button Container -->
         <div class="google-login-container">
-          <div id="google-signin-btn"></div>
+          <button type="button" class="google-passport-btn" (click)="loginWithGooglePassport()">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" />
+            <span>Continue with Google</span>
+          </button>
         </div>
 
         <div class="auth-divider">
@@ -149,7 +152,33 @@ import { AuthStore } from '../../../core/store/auth.store';
       display: flex;
       justify-content: center;
       width: 100%;
-      height: 44px;
+    }
+
+    .google-passport-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px 24px;
+      border: 1px solid hsl(var(--border-light));
+      border-radius: var(--border-radius-sm);
+      background-color: hsl(var(--bg-secondary));
+      color: hsl(var(--text-primary));
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+
+      &:hover {
+        background-color: hsl(var(--bg-tertiary));
+        border-color: hsl(var(--text-tertiary));
+      }
+
+      img {
+        width: 18px;
+        height: 18px;
+      }
     }
 
     .auth-divider {
@@ -331,6 +360,12 @@ export class LoginComponent implements OnInit {
         btnContainer,
         { theme: 'outline', size: 'large', width: 320 }
       );
+    }
+  }
+
+  loginWithGooglePassport() {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/api/auth/google';
     }
   }
 

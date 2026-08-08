@@ -76,17 +76,11 @@ export async function getUserStats(userId: string): Promise<{ joinedDate: string
 // Middleware to verify JWT access token
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
-
-  console.log("AUTH HEADER:", authHeader);
   const token = authHeader && authHeader.split(' ')[1];
-
-  console.log("TOKEN RECEIVED:", token);
 
   if (!token) return res.status(401).json({ error: 'Access token required' });
 
   jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
-    console.log("JWT ERROR:", err);
-    console.log("JWT PAYLOAD:", decoded);
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
     (req as any).user = decoded;
     next();
@@ -244,7 +238,7 @@ router.get('/verify-email', async (req: Request, res: Response) => {
     // Perform verification update
     console.log('[Email Verification] isFallback:', isFallback);
     console.log('[Email Verification] user.id before UPDATE:', user.id);
-    
+
     if (isFallback) {
       user.email_verified = true;
       user.is_email_verified = true;
@@ -367,9 +361,6 @@ router.get('/google/callback', (req: Request, res: Response, next: NextFunction)
     try {
       const token = generateAccessToken(user.id, user.email);
       const refreshToken = await generateAndStoreRefreshToken(user.id);
-
-      console.log("ACCESS TOKEN =", token);
-      console.log("REFRESH TOKEN =", refreshToken);
 
       const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
       return res.redirect(`${frontendBaseUrl}/auth/google/success?token=${token}&refreshToken=${refreshToken}`);

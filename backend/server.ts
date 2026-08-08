@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { readFileSync } from 'fs';
@@ -15,8 +15,6 @@ import userRoutes from './routes/user.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import { emailProvider } from './services/email.service.js';
 import passport from './config/passport.js';
-
-dotenv.config();
 
 // Validate required environment variables in production
 const requiredEnv = [
