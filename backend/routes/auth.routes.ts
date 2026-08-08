@@ -5,10 +5,11 @@ import bcrypt from 'bcrypt';
 import { OAuth2Client } from 'google-auth-library';
 import { dbQuery, isFallback, memoryDb } from '../db.js';
 import { emailProvider } from '../services/email.service.js';
+import passport from '../config/passport.js';
 
 const router = Router();
-const JWT_SECRET = process.env.NODE_ENV === 'production' 
-  ? process.env.JWT_SECRET! 
+const JWT_SECRET = process.env.NODE_ENV === 'production'
+  ? process.env.JWT_SECRET!
   : (process.env.JWT_SECRET || 'highwaypool_supersecret_jwt_token_key_2026');
 
 if (process.env.NODE_ENV === 'production' && (!JWT_SECRET || JWT_SECRET === 'highwaypool_supersecret_jwt_token_key_2026')) {
@@ -75,11 +76,17 @@ export async function getUserStats(userId: string): Promise<{ joinedDate: string
 // Middleware to verify JWT access token
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
+
+  console.log("AUTH HEADER:", authHeader);
   const token = authHeader && authHeader.split(' ')[1];
-  
+
+  console.log("TOKEN RECEIVED:", token);
+
   if (!token) return res.status(401).json({ error: 'Access token required' });
-  
+
   jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+    console.log("JWT ERROR:", err);
+    console.log("JWT PAYLOAD:", decoded);
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
     (req as any).user = decoded;
     next();
@@ -98,7 +105,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
   try {
     const formattedEmail = email.toLowerCase().trim();
-    
+
     // Check duplicate
     if (isFallback) {
       const exists = memoryDb.users.some(u => u.email === formattedEmail);
@@ -235,15 +242,20 @@ router.get('/verify-email', async (req: Request, res: Response) => {
     }
 
     // Perform verification update
+    console.log('[Email Verification] isFallback:', isFallback);
+    console.log('[Email Verification] user.id before UPDATE:', user.id);
+    
     if (isFallback) {
       user.email_verified = true;
       user.is_email_verified = true;
       user.email_verification_token = null;
+      console.log('[Email Verification] updateResult.rowCount: N/A (memoryDb fallback)');
     } else {
-      await dbQuery(
+      const updateResult = await dbQuery(
         "UPDATE users SET email_verified = TRUE, is_email_verified = TRUE, email_verification_token = NULL WHERE id = $1",
         [user.id]
       );
+      console.log('[Email Verification] updateResult.rowCount:', updateResult?.rowCount);
     }
 
     console.log(`[Email Verification] Successfully verified email for user: ${user.email}`);
@@ -336,6 +348,39 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// 4a. GET /api/auth/google (Redirect user to Google login)
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
+
+// 4b. GET /api/auth/google/callback (Handle Google callback)
+router.get('/google/callback', (req: Request, res: Response, next: NextFunction) => {
+  passport.authenticate('google', { session: false }, async (err: any, user: any) => {
+    if (err) {
+      console.error('Google Passport Auth Callback Error:', err);
+      const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+      return res.redirect(`${frontendBaseUrl}/login?error=${encodeURIComponent(err.message || 'Google Auth Failed')}`);
+    }
+    if (!user) {
+      const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+      return res.redirect(`${frontendBaseUrl}/login?error=Unauthorized`);
+    }
+
+    try {
+      const token = generateAccessToken(user.id, user.email);
+      const refreshToken = await generateAndStoreRefreshToken(user.id);
+
+      console.log("ACCESS TOKEN =", token);
+      console.log("REFRESH TOKEN =", refreshToken);
+
+      const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+      return res.redirect(`${frontendBaseUrl}/auth/google/success?token=${token}&refreshToken=${refreshToken}`);
+    } catch (tokenErr) {
+      console.error('Error generating token for Google login:', tokenErr);
+      const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+      return res.redirect(`${frontendBaseUrl}/login?error=TokenGenerationError`);
+    }
+  })(req, res, next);
+});
+
 // 4. POST /api/auth/google (Google OAuth 2.0 validation)
 router.post('/google', async (req: Request, res: Response) => {
   const { idToken } = req.body;
@@ -343,7 +388,7 @@ router.post('/google', async (req: Request, res: Response) => {
 
   try {
     let payload: any;
-    
+
     if (process.env.NODE_ENV === 'test' || isFallback) {
       // Decode JWT locally for mock testing or local dev fallback when CLIENT_ID is offline
       const parts = idToken.split('.');
@@ -468,14 +513,14 @@ router.post('/google', async (req: Request, res: Response) => {
 router.post('/set-password', authenticateToken, async (req: Request, res: Response) => {
   const decoded = (req as any).user;
   const { password } = req.body;
-  
+
   if (!password || password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
   }
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    
+
     if (isFallback) {
       const user = memoryDb.users.find(u => u.id === decoded.userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -597,11 +642,12 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
 // 8. GET /api/auth/me
 router.get('/me', authenticateToken, async (req: Request, res: Response) => {
+  console.log("REQ USER:", (req as any).user);
   const decoded = (req as any).user;
-  
+
   try {
     let user: any = null;
-    
+
     if (isFallback) {
       user = memoryDb.users.find(u => u.id === decoded.userId);
     } else {
@@ -664,7 +710,7 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
 
   try {
     let user: any = null;
-    
+
     if (isFallback) {
       const idx = memoryDb.users.findIndex(u => u.id === decoded.userId);
       if (idx !== -1) {
@@ -733,10 +779,10 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
 // 10. POST /api/auth/demo-login
 router.post('/demo-login', async (req: Request, res: Response) => {
   const { role } = req.body;
-  
+
   try {
     let user: any = null;
-    
+
     if (isFallback) {
       if (role === 'passenger') {
         user = memoryDb.users.find(u => u.id === 'usr_me');

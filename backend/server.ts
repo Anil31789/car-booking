@@ -14,6 +14,7 @@ import bookingRoutes from './routes/booking.routes.js';
 import userRoutes from './routes/user.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import { emailProvider } from './services/email.service.js';
+import passport from './config/passport.js';
 
 dotenv.config();
 
@@ -85,6 +86,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(passport.initialize());
 
 // Global Rate Limiting for all API requests
 const globalLimiter = rateLimit({
