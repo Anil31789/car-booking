@@ -521,8 +521,13 @@ export class HomeComponent implements OnInit {
     });
 
     // Retrieve featured rides
-    this.rideService.getRides().subscribe(allRides => {
-      this.featuredRides = allRides.filter(r => r.availableSeats > 1 && r.departureDate >= this.minDate).slice(0, 2);
+    this.rideService.getRides().subscribe({
+      next: (allRides) => {
+        this.featuredRides = allRides.filter(r => r.availableSeats > 1 && r.departureDate >= this.minDate).slice(0, 2);
+      },
+      error: (err) => {
+        console.warn('Failed to retrieve featured rides during initialization:', err.message || err);
+      }
     });
   }
 

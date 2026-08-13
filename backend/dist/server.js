@@ -3,9 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const dotenv_1 = __importDefault(require("dotenv"));
 const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const fs_1 = require("fs");
@@ -17,7 +17,7 @@ const booking_routes_js_1 = __importDefault(require("./routes/booking.routes.js"
 const user_routes_js_1 = __importDefault(require("./routes/user.routes.js"));
 const notification_routes_js_1 = __importDefault(require("./routes/notification.routes.js"));
 const email_service_js_1 = require("./services/email.service.js");
-dotenv_1.default.config();
+const passport_js_1 = __importDefault(require("./config/passport.js"));
 // Validate required environment variables in production
 const requiredEnv = [
     'NODE_ENV',
@@ -64,8 +64,19 @@ let allowedOrigins = [];
 if (process.env.ALLOWED_ORIGINS) {
     allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
 }
-else if (process.env.NODE_ENV !== 'production') {
-    allowedOrigins = ['http://localhost:4200', 'http://localhost:4000'];
+else {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+        if (!process.env.FRONTEND_BASE_URL) {
+            console.error('FATAL CONFIGURATION ERROR: FRONTEND_BASE_URL environment variable is required in production!');
+            process.exit(1);
+        }
+        allowedOrigins = [process.env.FRONTEND_BASE_URL];
+    }
+    else {
+        const frontendUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+        allowedOrigins = [frontendUrl, 'http://localhost:4200', 'http://localhost:4000'];
+    }
 }
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -80,6 +91,7 @@ app.use((0, cors_1.default)({
     credentials: true
 }));
 app.use(express_1.default.json());
+app.use(passport_js_1.default.initialize());
 // Global Rate Limiting for all API requests
 const globalLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes

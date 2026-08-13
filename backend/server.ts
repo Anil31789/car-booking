@@ -67,8 +67,18 @@ app.use(helmet());
 let allowedOrigins: string[] = [];
 if (process.env.ALLOWED_ORIGINS) {
   allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-} else if (process.env.NODE_ENV !== 'production') {
-  allowedOrigins = ['http://localhost:4200', 'http://localhost:4000'];
+} else {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (isProd) {
+    if (!process.env.FRONTEND_BASE_URL) {
+      console.error('FATAL CONFIGURATION ERROR: FRONTEND_BASE_URL environment variable is required in production!');
+      process.exit(1);
+    }
+    allowedOrigins = [process.env.FRONTEND_BASE_URL];
+  } else {
+    const frontendUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+    allowedOrigins = [frontendUrl, 'http://localhost:4200', 'http://localhost:4000'];
+  }
 }
 
 app.use(cors({

@@ -17,14 +17,31 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   
   let apiReq = req;
   
-  // Resolve SSR relative API request issues
-  if (isPlatformServer(platformId) && req.url.startsWith('/api')) {
-    const apiBase = (typeof process !== 'undefined' && process.env && process.env['API_BASE_URL']) 
-      ? process.env['API_BASE_URL'] 
-      : 'http://localhost:5000';
-    apiReq = req.clone({
-      url: `${apiBase}${req.url}`
-    });
+  // Resolve API request URLs dynamically for SSR (process.env.API_BASE_URL) and browser fallback (window.API_BASE_URL)
+  if (req.url.startsWith('/api')) {
+    let apiBase = '';
+    if (isPlatformServer(platformId)) {
+      const isProd = typeof process !== 'undefined' && process.env && process.env['NODE_ENV'] === 'production';
+      apiBase = (typeof process !== 'undefined' && process.env && process.env['API_BASE_URL'])
+        ? process.env['API_BASE_URL']
+        : '';
+
+      if (!apiBase) {
+        if (isProd) {
+          return throwError(() => new Error('FATAL SSR CONFIG ERROR: API_BASE_URL environment variable is missing in production!'));
+        } else {
+          apiBase = 'http://localhost:5000'; // local dev fallback only
+        }
+      }
+    } else if (typeof window !== 'undefined' && (window as any).API_BASE_URL) {
+      apiBase = (window as any).API_BASE_URL;
+    }
+
+    if (apiBase) {
+      apiReq = req.clone({
+        url: `${apiBase}${req.url}`
+      });
+    }
   }
   
   // Extract token from localStorage directly to prevent DI circular dependencies

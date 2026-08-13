@@ -12,6 +12,7 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const google_auth_library_1 = require("google-auth-library");
 const db_js_1 = require("../db.js");
 const email_service_js_1 = require("../services/email.service.js");
+const passport_js_1 = __importDefault(require("../config/passport.js"));
 const router = (0, express_1.Router)();
 const JWT_SECRET = process.env.NODE_ENV === 'production'
     ? process.env.JWT_SECRET
@@ -220,13 +221,17 @@ router.get('/verify-email', async (req, res) => {
             return res.status(400).json({ error: 'Verification link expired.' });
         }
         // Perform verification update
+        console.log('[Email Verification] isFallback:', db_js_1.isFallback);
+        console.log('[Email Verification] user.id before UPDATE:', user.id);
         if (db_js_1.isFallback) {
             user.email_verified = true;
             user.is_email_verified = true;
             user.email_verification_token = null;
+            console.log('[Email Verification] updateResult.rowCount: N/A (memoryDb fallback)');
         }
         else {
-            await (0, db_js_1.dbQuery)("UPDATE users SET email_verified = TRUE, is_email_verified = TRUE, email_verification_token = NULL WHERE id = $1", [user.id]);
+            const updateResult = await (0, db_js_1.dbQuery)("UPDATE users SET email_verified = TRUE, is_email_verified = TRUE, email_verification_token = NULL WHERE id = $1", [user.id]);
+            console.log('[Email Verification] updateResult.rowCount:', updateResult?.rowCount);
         }
         console.log(`[Email Verification] Successfully verified email for user: ${user.email}`);
         return res.json({ success: true, message: 'Email verified successfully.' });
@@ -310,6 +315,33 @@ router.post('/login', async (req, res) => {
         console.error('Login Error:', err);
         return res.status(500).json({ error: 'Server error' });
     }
+});
+// 4a. GET /api/auth/google (Redirect user to Google login)
+router.get('/google', passport_js_1.default.authenticate('google', { scope: ['profile', 'email'], session: false }));
+// 4b. GET /api/auth/google/callback (Handle Google callback)
+router.get('/google/callback', (req, res, next) => {
+    passport_js_1.default.authenticate('google', { session: false }, async (err, user) => {
+        if (err) {
+            console.error('Google Passport Auth Callback Error:', err);
+            const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+            return res.redirect(`${frontendBaseUrl}/login?error=${encodeURIComponent(err.message || 'Google Auth Failed')}`);
+        }
+        if (!user) {
+            const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+            return res.redirect(`${frontendBaseUrl}/login?error=Unauthorized`);
+        }
+        try {
+            const token = generateAccessToken(user.id, user.email);
+            const refreshToken = await generateAndStoreRefreshToken(user.id);
+            const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+            return res.redirect(`${frontendBaseUrl}/auth/google/success?token=${token}&refreshToken=${refreshToken}`);
+        }
+        catch (tokenErr) {
+            console.error('Error generating token for Google login:', tokenErr);
+            const frontendBaseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:4200';
+            return res.redirect(`${frontendBaseUrl}/login?error=TokenGenerationError`);
+        }
+    })(req, res, next);
 });
 // 4. POST /api/auth/google (Google OAuth 2.0 validation)
 router.post('/google', async (req, res) => {
@@ -552,6 +584,7 @@ router.post('/reset-password', async (req, res) => {
 });
 // 8. GET /api/auth/me
 router.get('/me', authenticateToken, async (req, res) => {
+    console.log("REQ USER:", req.user);
     const decoded = req.user;
     try {
         let user = null;
