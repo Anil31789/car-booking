@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import { generalLimiter } from './middleware/rate-limiter.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -97,14 +97,7 @@ app.use(express.json());
 app.use(passport.initialize());
 
 // Global Rate Limiting for all API requests
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 100, // Limit each IP to 100 requests per windowMs
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many requests from this IP, please try again after 15 minutes.' }
-});
-app.use('/api', globalLimiter);
+app.use('/api', generalLimiter);
 
 // Register routes
 app.use('/api/auth', authRoutes);

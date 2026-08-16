@@ -46,7 +46,7 @@ import { AuthStore } from '../../core/store/auth.store';
               <!-- Booking Card Header -->
               <div class="bk-header">
                 <span class="bk-route" *ngIf="bk.ride">{{ bk.ride.startLocation }} &rarr; {{ bk.ride.destination }}</span>
-                <span class="bk-status" [class]="bk.status">{{ bk.status }}</span>
+                <span class="bk-status" [class]="bk.status">{{ getStatusLabel(bk) }}</span>
               </div>
               
               <div class="bk-body" *ngIf="bk.ride">
@@ -370,6 +370,15 @@ export class BookingsComponent implements OnInit {
   bookingStore = inject(BookingStore);
   authStore = inject(AuthStore);
   router = inject(Router);
+
+  getStatusLabel(bk: any): string {
+    if (bk.status === 'cancelled') {
+      if (bk.cancelledBy === 'driver') return 'Cancelled by Driver';
+      if (bk.cancelledBy === 'passenger') return 'Cancelled by Passenger';
+      return 'Cancelled';
+    }
+    return bk.status;
+  }
 
   activeTab: 'upcoming' | 'completed' | 'cancelled' = 'upcoming';
   confirmCancelBookingId: string | null = null;

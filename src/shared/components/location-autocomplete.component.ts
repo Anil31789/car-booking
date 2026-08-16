@@ -16,15 +16,16 @@ export interface City {
       <label *ngIf="label">{{ label }}</label>
       <div class="input-wrapper">
         <span class="material-icons-outlined prefix-icon" [class]="iconClass">{{ icon }}</span>
-        
-        <input 
-          type="text" 
-          [placeholder]="placeholder" 
-          [(ngModel)]="inputValue" 
+
+        <input
+          type="text"
+          [placeholder]="placeholder"
+          [(ngModel)]="inputValue"
           (ngModelChange)="onInputChange($event)"
           (focus)="onInputFocus()"
           (blur)="onInputBlur()"
           (keydown)="onKeyDown($event)"
+          [disabled]="disabled"
           required
           class="search-input"
           autocomplete="off" />
@@ -32,9 +33,9 @@ export interface City {
 
       <!-- Autocomplete Dropdown List -->
       <div class="autocomplete-dropdown glass-panel" *ngIf="showDropdown && filteredCities.length > 0">
-        <div 
-          *ngFor="let city of filteredCities; let i = index" 
-          class="dropdown-item" 
+        <div
+          *ngFor="let city of filteredCities; let i = index"
+          class="dropdown-item"
           [class.active]="i === activeIndex"
           (mouseenter)="activeIndex = i"
           (mousedown)="$event.preventDefault(); selectCity(city)">
@@ -91,7 +92,7 @@ export interface City {
       padding: 0;
       width: 100%;
       height: 22px;
-      
+
       &::placeholder {
         color: hsl(var(--text-tertiary));
         font-weight: 500;
@@ -102,7 +103,7 @@ export interface City {
       font-size: 20px;
       color: hsl(var(--text-tertiary));
       margin-right: 10px;
-      
+
       &.text-primary {
         color: var(--color-primary);
       }
@@ -182,6 +183,7 @@ export class LocationAutocompleteComponent implements OnInit, OnChanges {
   @Input() value = '';
   @Input() icon = 'place';
   @Input() iconClass = '';
+  @Input() disabled = false;
 
   @Output() valueChange = new EventEmitter<string>();
 
@@ -253,14 +255,15 @@ export class LocationAutocompleteComponent implements OnInit, OnChanges {
       return;
     }
 
-    this.filteredCities = this.citiesList.filter(city => 
-      city.name.toLowerCase().includes(query) || 
+    this.filteredCities = this.citiesList.filter(city =>
+      city.name.toLowerCase().includes(query) ||
       city.state.toLowerCase().includes(query)
     );
     this.activeIndex = -1; // Reset active item selection
   }
 
   onInputFocus() {
+    if (this.disabled) return;
     this.showDropdown = true;
     this.filterLocations();
   }
@@ -281,6 +284,7 @@ export class LocationAutocompleteComponent implements OnInit, OnChanges {
 
   // Keyboard Navigation Handling
   onKeyDown(event: KeyboardEvent) {
+    if (this.disabled) return;
     if (!this.showDropdown) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         this.showDropdown = true;

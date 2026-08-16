@@ -13,7 +13,7 @@ import { Booking } from '../../core/models/booking.models';
   imports: [CommonModule, FormsModule],
   template: `
     <div class="booking-page slide-in" *ngIf="!rideStore.loading() && rideStore.activeRide() as ride; else loader">
-      
+
       <!-- Back Header -->
       <header class="page-header" *ngIf="!bookingSuccess">
         <button class="back-btn" (click)="router.navigate(['/ride', ride.id])">
@@ -92,7 +92,7 @@ import { Booking } from '../../core/models/booking.models';
         <section class="checkout-card glass-panel">
           <h4 class="card-title">Select Payment Mode</h4>
           <p class="card-desc">MVP supports direct passenger-to-driver payments via Cash or UPI.</p>
-          
+
           <div class="payment-options">
             <div class="pay-option" [class.active]="paymentMethod === 'Cash'" (click)="paymentMethod = 'Cash'">
               <span class="material-icons-outlined pay-icon">payments</span>
@@ -122,6 +122,21 @@ import { Booking } from '../../core/models/booking.models';
           </div>
         </section>
 
+        <!-- Phone verification check -->
+        <div class="active-bookings-warning fade-in" *ngIf="!authStore.currentUser()?.phone" style="padding: 16px; background-color: rgba(255, 69, 58, 0.1); border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 6px; color: var(--color-danger); font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-icons-outlined">error_outline</span>
+            <span>A mobile contact number is required to book a ride so the driver can reach you.</span>
+          </div>
+          <button
+            type="button"
+            class="ripple-btn btn-secondary"
+            style="align-self: flex-start; padding: 6px 12px; font-size: 0.78rem;"
+            (click)="router.navigate(['/profile'])">
+            Go to Profile & Add Phone
+          </button>
+        </div>
+
         <!-- Error Banner -->
         <div class="error-banner glass-panel slide-in" *ngIf="bookingStore.error()">
           <span class="material-icons-outlined">error_outline</span>
@@ -129,9 +144,9 @@ import { Booking } from '../../core/models/booking.models';
         </div>
 
         <!-- Submit Button -->
-        <button 
-          class="ripple-btn submit-booking-btn" 
-          [disabled]="selectedSeats.length !== seatsToBook || bookingStore.loading()"
+        <button
+          class="ripple-btn submit-booking-btn"
+          [disabled]="selectedSeats.length !== seatsToBook || bookingStore.loading() || !authStore.currentUser()?.phone"
           (click)="confirmBooking()">
           <span class="spinner" *ngIf="bookingStore.loading()"></span>
           {{ bookingStore.loading() ? 'Reserving seat...' : 'Pay & Confirm Reservation' }}
@@ -214,7 +229,7 @@ import { Booking } from '../../core/models/booking.models';
         display: flex;
         align-items: center;
         padding: 4px;
-        
+
         span { font-size: 24px; }
       }
 
@@ -262,12 +277,12 @@ import { Booking } from '../../core/models/booking.models';
       gap: 12px;
       padding-bottom: 12px;
       border-bottom: 1px solid hsl(var(--border-light));
-      
+
       .vehicle-icon {
         font-size: 28px;
         color: var(--color-primary);
       }
-      
+
       .vehicle-details {
         h5 {
           margin: 0;
@@ -293,7 +308,7 @@ import { Booking } from '../../core/models/booking.models';
       display: flex;
       flex-direction: column;
       gap: 2px;
-      
+
       .stepper-label {
         font-size: 0.88rem;
         font-weight: 750;
@@ -310,7 +325,7 @@ import { Booking } from '../../core/models/booking.models';
       display: flex;
       align-items: center;
       gap: 14px;
-      
+
       .step-btn {
         width: 34px;
         height: 34px;
@@ -323,21 +338,21 @@ import { Booking } from '../../core/models/booking.models';
         justify-content: center;
         cursor: pointer;
         transition: var(--transition-smooth);
-        
+
         span { font-size: 18px; font-weight: 700; }
-        
+
         &:hover:not(:disabled) {
           border-color: var(--color-primary);
           color: var(--color-primary);
           background-color: rgba(10, 132, 255, 0.02);
         }
-        
+
         &:disabled {
           opacity: 0.35;
           cursor: not-allowed;
         }
       }
-      
+
       .step-value {
         font-size: 1.15rem;
         font-weight: 855;
@@ -355,19 +370,19 @@ import { Booking } from '../../core/models/booking.models';
       border-radius: 8px;
       padding: 10px 14px;
       margin-top: 4px;
-      
+
       .vertical-divider-thin {
         width: 1px;
         background-color: hsl(var(--border-light));
       }
-      
+
       .summary-stat {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 2px;
         flex: 1;
-        
+
         .stat-lbl {
           font-size: 0.62rem;
           font-weight: 750;
@@ -392,11 +407,11 @@ import { Booking } from '../../core/models/booking.models';
       padding: 8px 12px;
       border-radius: 6px;
       border: 1px dashed hsl(var(--border-medium));
-      
+
       .info-icon {
         font-size: 16px;
       }
-      
+
       strong {
         color: hsl(var(--text-primary));
       }
@@ -449,7 +464,7 @@ import { Booking } from '../../core/models/booking.models';
         border-color: var(--color-primary);
         background-color: rgba(10, 132, 255, 0.03);
         color: var(--color-primary);
-        
+
         .pay-icon { color: var(--color-primary); }
       }
     }
@@ -469,7 +484,7 @@ import { Booking } from '../../core/models/booking.models';
       color: hsl(var(--text-primary));
       font-size: 0.82rem;
       outline: none;
-      
+
       &:focus { border-color: var(--color-primary); background-color: hsl(var(--bg-primary)); }
     }
 
@@ -568,7 +583,7 @@ import { Booking } from '../../core/models/booking.models';
           border-top: 1px dashed hsl(var(--border-medium));
           padding-top: 8px;
           font-size: 0.88rem;
-          
+
           .ticket-val { color: var(--color-primary); }
         }
       }
@@ -596,10 +611,10 @@ import { Booking } from '../../core/models/booking.models';
         .qr-inner-pattern {
           width: 100%;
           height: 100%;
-          background-image: 
-            linear-gradient(45deg, #000000 25%, transparent 25%), 
-            linear-gradient(-45deg, #000000 25%, transparent 25%), 
-            linear-gradient(45deg, transparent 75%, #000000 75%), 
+          background-image:
+            linear-gradient(45deg, #000000 25%, transparent 25%),
+            linear-gradient(-45deg, #000000 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #000000 75%),
             linear-gradient(-45deg, transparent 75%, #000000 75%);
           background-size: 8px 8px;
           background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
@@ -688,7 +703,7 @@ export class BookingComponent implements OnInit {
   seatsToBook = 1;
   selectedSeats: number[] = [];
   paymentMethod: 'UPI' | 'Cash' = 'Cash';
-  
+
   bookingSuccess = false;
   activeBooking: Booking | null = null;
 

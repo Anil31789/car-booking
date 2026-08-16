@@ -26,19 +26,19 @@ interface PassengerRequest {
   imports: [CommonModule, FormsModule, LocationAutocompleteComponent],
   template: `
     <div class="driver-page slide-in">
-      
+
       <!-- Premium Segmented View Control -->
       <section class="segment-controls">
-        <button 
-          class="segment-btn" 
-          [class.active]="activeTab === 'listings'" 
+        <button
+          class="segment-btn"
+          [class.active]="activeTab === 'listings'"
           (click)="switchTab('listings')">
           <span class="material-icons-outlined">directions_car</span>
           My Offers
         </button>
-        <button 
-          class="segment-btn" 
-          [class.active]="activeTab === 'publish'" 
+        <button
+          class="segment-btn"
+          [class.active]="activeTab === 'publish'"
           (click)="switchTab('publish')">
           <span class="material-icons-outlined">add_circle</span>
           Offer a Ride
@@ -47,15 +47,15 @@ interface PassengerRequest {
 
       <!-- TAB 1: Manage Ride Listings & Passenger Requests -->
       <div class="tab-content" *ngIf="activeTab === 'listings'">
-        
+
         <!-- Passenger Requests / Approvals Panel -->
         <section class="approvals-section" *ngIf="incomingRequests.length > 0">
           <h3 class="section-title">Incoming Booking Requests</h3>
           <div class="requests-list">
-            <div 
-              *ngFor="let req of incomingRequests" 
+            <div
+              *ngFor="let req of incomingRequests"
               class="request-card glass-panel">
-              
+
               <div class="req-header">
                 <div class="req-avatar" [style.background-color]="getAvatarColor(req.passengerName)">
                   {{ getInitials(req.passengerName) }}
@@ -66,7 +66,7 @@ interface PassengerRequest {
                 </div>
                 <span class="req-badge">₹{{ req.totalPrice }}</span>
               </div>
-              
+
               <p class="req-route-info">
                 Route: <strong>{{ req.rideRoute }}</strong>
               </p>
@@ -89,10 +89,10 @@ interface PassengerRequest {
         <section class="approvals-section" *ngIf="confirmedBookings.length > 0">
           <h3 class="section-title">Confirmed Bookings & Payments</h3>
           <div class="requests-list">
-            <div 
-              *ngFor="let req of confirmedBookings" 
+            <div
+              *ngFor="let req of confirmedBookings"
               class="request-card glass-panel">
-              
+
               <div class="req-header">
                 <div class="req-avatar" [style.background-color]="getAvatarColor(req.passengerName)">
                   {{ getInitials(req.passengerName) }}
@@ -103,9 +103,14 @@ interface PassengerRequest {
                 </div>
                 <span class="req-badge">₹{{ req.totalPrice }}</span>
               </div>
-              
+
               <p class="req-route-info">
                 Route: <strong>{{ req.rideRoute }}</strong>
+              </p>
+
+              <p class="req-route-info" *ngIf="req.passengerPhone" style="margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
+                Contact: <strong>{{ req.passengerPhone }}</strong>
               </p>
 
               <div class="payment-summary-block">
@@ -115,8 +120,8 @@ interface PassengerRequest {
 
               <!-- Mark as Paid trigger -->
               <div class="req-actions" *ngIf="canMarkPaid(req)">
-                <button 
-                  class="ripple-btn accept-btn mark-paid-btn" 
+                <button
+                  class="ripple-btn accept-btn mark-paid-btn"
                   [class.confirm-btn]="confirmMarkPaidId === req.id"
                   (click)="markPaid(req.id)">
                   {{ confirmMarkPaidId === req.id ? 'Click to Confirm' : 'Mark as Paid' }}
@@ -130,13 +135,13 @@ interface PassengerRequest {
         <!-- Main Offers Listings list -->
         <section class="listings-section">
           <h3 class="section-title">Your Offered Rides</h3>
-          
+
           <!-- Store error banner -->
           <div class="error-banner glass-panel slide-in" *ngIf="rideStore.error() || bookingStore.error()">
             <span class="material-icons-outlined">error_outline</span>
             <p>{{ rideStore.error() || bookingStore.error() }}</p>
           </div>
-          
+
           <!-- Loader skeleton -->
           <div class="skeletons-list" *ngIf="rideStore.loading()">
             <div class="skeleton-card skeleton" style="height: 120px" *ngFor="let s of [1, 2]"></div>
@@ -144,13 +149,13 @@ interface PassengerRequest {
 
           <div class="real-offers" *ngIf="!rideStore.loading()">
             <div class="offers-list" *ngIf="rideStore.offeredRides().length > 0; else emptyOffers">
-              
+
               <div class="offer-card glass-panel" *ngFor="let ride of rideStore.offeredRides()">
                 <div class="offer-header">
                   <span class="offer-route">{{ ride.startLocation }} &rarr; {{ ride.destination }}</span>
                   <span class="offer-price">₹{{ ride.pricePerSeat }}/seat</span>
                 </div>
-                
+
                 <p class="offer-time-lbl">
                   <span class="material-icons-outlined icon-mini">today</span>
                   {{ ride.departureDate | date:'MMM dd, yyyy' }} at {{ ride.departureTime }}
@@ -165,11 +170,20 @@ interface PassengerRequest {
                   </span>
                 </div>
 
-                <div class="offer-actions">
-                  <button 
-                    class="ripple-btn btn-secondary cancel-offer-btn" 
+                <div class="offer-actions" style="display: flex; gap: 8px; justify-content: flex-end;">
+                  <button
+                    *ngIf="!isDeparted(ride)"
+                    type="button"
+                    class="ripple-btn btn-secondary"
+                    style="padding: 8px 16px; font-size: 0.75rem; border: 1px solid hsl(var(--border-light)); background-color: hsl(var(--bg-primary)); color: hsl(var(--text-primary)); margin-top: 0;"
+                    (click)="startEditRide(ride)">
+                    Edit Ride
+                  </button>
+                  <button
+                    class="ripple-btn btn-secondary cancel-offer-btn"
                     [class.confirm-cancel-btn]="confirmCancelOfferId === ride.id"
-                    (click)="cancelOffer(ride.id)">
+                    (click)="cancelOffer(ride.id)"
+                    style="margin-top: 0;">
                     {{ confirmCancelOfferId === ride.id ? 'Confirm Cancel?' : 'Cancel Offer' }}
                   </button>
                 </div>
@@ -194,7 +208,7 @@ interface PassengerRequest {
 
       <!-- TAB 2: Offer Ride Publishing Form -->
       <div class="tab-content scrollable-form" *ngIf="activeTab === 'publish'">
-        
+
         <!-- Case A: User has NO driving license on file -> show verification overlay prompt -->
         <div class="publish-card glass-panel prompt-card fade-in" *ngIf="!hasLicense()" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
           <div style="text-align: center; margin-bottom: 12px;">
@@ -204,16 +218,16 @@ interface PassengerRequest {
               To start offering rides and sharing your trips on HighwayPool, please submit your valid Driving License number for verification.
             </p>
           </div>
-          
+
           <form (ngSubmit)="submitLicense()" #licenseSubmitForm="ngForm" class="license-prompt-form" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="custom-input-group">
               <label>Driving License Number</label>
               <div class="input-wrapper" style="display: flex; align-items: center; border: 1px solid hsl(var(--border-light)); border-radius: var(--border-radius-sm); padding: 12px 14px; background-color: hsl(var(--bg-secondary));">
                 <span class="material-icons-outlined prefix-icon" style="font-size: 20px; color: hsl(var(--text-tertiary)); margin-right: 12px;">tag</span>
-                <input 
-                  type="text" 
-                  placeholder="e.g. DL-1420110068732" 
-                  [(ngModel)]="tempLicenseNumber" 
+                <input
+                  type="text"
+                  placeholder="e.g. DL-1420110068732"
+                  [(ngModel)]="tempLicenseNumber"
                   name="licenseNumber"
                   required
                   minlength="5"
@@ -224,10 +238,10 @@ interface PassengerRequest {
                 A valid driving license number is required.
               </div>
             </div>
-            
-            <button 
-              type="submit" 
-              class="ripple-btn submit-btn" 
+
+            <button
+              type="submit"
+              class="ripple-btn submit-btn"
               [disabled]="licenseSubmitForm.invalid || licenseLoading"
               style="width: 100%; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
               <span class="spinner" *ngIf="licenseLoading"></span>
@@ -238,8 +252,26 @@ interface PassengerRequest {
 
         <!-- Case B: User has a license -> show original publish form -->
         <div class="publish-card glass-panel" *ngIf="hasLicense()">
-          <h3 class="section-title" style="margin-bottom: 20px">Offer a Ride</h3>
-          
+          <h3 class="section-title" style="margin-bottom: 20px">{{ editingRideId ? 'Edit Ride' : 'Offer a Ride' }}</h3>
+
+          <div class="active-bookings-warning fade-in" *ngIf="!authStore.currentUser()?.phone" style="padding: 16px; background-color: rgba(255, 69, 58, 0.1); border: 1px solid rgba(255, 69, 58, 0.25); border-radius: 6px; color: var(--color-danger); font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-outlined">error_outline</span>
+              <span>A mobile contact number is required to offer/edit a ride so passengers can reach you.</span>
+            </div>
+            <button
+              type="button"
+              class="ripple-btn btn-secondary"
+              style="align-self: flex-start; padding: 6px 12px; font-size: 0.78rem;"
+              (click)="router.navigate(['/profile'])">
+              Go to Profile & Add Phone
+            </button>
+          </div>
+
+          <div class="active-bookings-warning fade-in" *ngIf="hasActiveBookings" style="padding: 12px; background-color: rgba(255, 179, 0, 0.1); border: 1px solid rgba(255, 179, 0, 0.25); border-radius: 4px; color: #cc8e00; font-size: 0.82rem; font-weight: 600; margin-bottom: 16px;">
+            Note: Certain fields are locked because passengers have already booked seats on this ride.
+          </div>
+
           <form (ngSubmit)="onPublish()" #publishForm="ngForm" class="publish-form">
             <!-- Start Location Autocomplete -->
             <app-location-autocomplete
@@ -247,25 +279,26 @@ interface PassengerRequest {
               [placeholder]="'Leaving from (e.g. Mumbai)'"
               [(value)]="from"
               [icon]="'trip_origin'"
-              [iconClass]="'text-primary'">
+              [iconClass]="'text-primary'"
+              [disabled]="hasActiveBookings">
             </app-location-autocomplete>
 
             <!-- Intermediary Stops custom list builder with location dropdown -->
             <div class="stops-builder-section">
               <label class="builder-lbl">Intermediary Stops</label>
-              
+
               <div class="builder-list" *ngIf="stops.length > 0">
                 <div class="builder-row slide-in" *ngFor="let stop of stops; let i = index">
                   <span class="builder-node">&bull;</span>
                   <span class="builder-name">{{ stop.name }} ({{ stop.arrivalTime }})</span>
-                  <button type="button" class="remove-stop-btn" (click)="removeStop(i)">
+                  <button type="button" class="remove-stop-btn" (click)="removeStop(i)" *ngIf="!hasActiveBookings">
                     <span class="material-icons-outlined">remove_circle_outline</span>
                   </button>
                 </div>
               </div>
-              
+
               <!-- Autocomplete Stop Input row -->
-              <div class="stop-inputs-row">
+              <div class="stop-inputs-row" *ngIf="!hasActiveBookings">
                 <div class="autocomplete-stop-wrapper">
                   <app-location-autocomplete
                     [placeholder]="'Stop (e.g. Lonavala)'"
@@ -275,7 +308,7 @@ interface PassengerRequest {
                   </app-location-autocomplete>
                 </div>
                 <input type="time" [(ngModel)]="newStopTime" name="newTime" class="stop-input-time" />
-                <button type="button" class="add-stop-btn" (click)="addStop()" [disabled]="!newStopName || !newStopTime">
+                <button type="button" class="add-stop-btn" (click)="addStop()" [disabled]="!newStopName || !newStopTime || hasActiveBookings">
                   Add
                 </button>
               </div>
@@ -287,21 +320,28 @@ interface PassengerRequest {
               [placeholder]="'Going to (e.g. Pune)'"
               [(value)]="to"
               [icon]="'place'"
-              [iconClass]="'text-secondary'">
+              [iconClass]="'text-secondary'"
+              [disabled]="hasActiveBookings">
             </app-location-autocomplete>
 
             <!-- Date and Time row -->
-            <div class="form-double-row">
-              <div class="custom-input-group">
+            <div class="form-double-row" style="display: flex; gap: 12px;">
+              <div class="custom-input-group" style="flex: 1;">
                 <label>Date</label>
                 <div class="input-wrapper">
-                  <input type="date" [(ngModel)]="date" name="date" required [min]="minDate" class="form-input" />
+                  <input type="date" [(ngModel)]="date" name="date" required [min]="minDate" class="form-input" [disabled]="hasActiveBookings" />
                 </div>
               </div>
-              <div class="custom-input-group">
-                <label>Time</label>
+              <div class="custom-input-group" style="flex: 1;">
+                <label>Departure Time</label>
                 <div class="input-wrapper">
-                  <input type="time" [(ngModel)]="time" name="time" required class="form-input" />
+                  <input type="time" [(ngModel)]="time" name="time" required class="form-input" [disabled]="hasActiveBookings" />
+                </div>
+              </div>
+              <div class="custom-input-group" style="flex: 1;">
+                <label>Arrival Time</label>
+                <div class="input-wrapper">
+                  <input type="time" [(ngModel)]="arrivalTime" name="arrivalTime" required class="form-input" />
                 </div>
               </div>
             </div>
@@ -312,7 +352,7 @@ interface PassengerRequest {
                 <label>Seats Offered</label>
                 <div class="input-wrapper">
                   <span class="material-icons-outlined prefix-icon">event_seat</span>
-                  <select [(ngModel)]="seats" name="seats" required class="form-select">
+                  <select [(ngModel)]="seats" name="seats" required class="form-select" [disabled]="hasActiveBookings">
                     <option [value]="2">2 Seats</option>
                     <option [value]="3">3 Seats</option>
                     <option [value]="4" selected>4 Seats</option>
@@ -324,14 +364,15 @@ interface PassengerRequest {
                 <label>Price per Seat (₹)</label>
                 <div class="input-wrapper">
                   <span class="material-icons-outlined prefix-icon">payments</span>
-                  <input 
-                    type="number" 
-                    placeholder="e.g. 350" 
-                    [(ngModel)]="price" 
-                    name="price" 
-                    required 
-                    min="50" 
-                    class="form-input" />
+                  <input
+                    type="number"
+                    placeholder="e.g. 350"
+                    [(ngModel)]="price"
+                    name="price"
+                    required
+                    min="50"
+                    class="form-input"
+                    [disabled]="hasActiveBookings" />
                 </div>
               </div>
             </div>
@@ -339,17 +380,17 @@ interface PassengerRequest {
             <!-- Vehicle selection segment -->
             <div class="vehicle-selection-card">
               <h4 class="card-subtitle">Vehicle Details</h4>
-              
+
               <div class="custom-input-group" style="margin-bottom: 14px">
                 <label>Select Vehicle</label>
                 <div class="input-wrapper">
                   <span class="material-icons-outlined prefix-icon">directions_car</span>
-                  <select 
-                    [(ngModel)]="selectedVehicleId" 
-                    name="selectedVehicle" 
-                    (change)="onVehicleSelectChange()" 
+                  <select
+                    [(ngModel)]="selectedVehicleId"
+                    name="selectedVehicle"
+                    (change)="onVehicleSelectChange()"
                     class="form-select">
-                    <option value="custom">New / Other Vehicle</option>
+                    <option value="custom">Add Custom Vehicle / New Info</option>
                     <option *ngFor="let veh of authStore.currentUser()?.registeredVehicles" [value]="veh.id">
                       {{ veh.model }} ({{ veh.numberPlate }})
                     </option>
@@ -357,62 +398,64 @@ interface PassengerRequest {
                 </div>
               </div>
 
-              <!-- Double row for vehicle specs -->
-              <div class="form-double-row">
-                <div class="custom-input-group">
-                  <label>Vehicle Model</label>
-                  <div class="input-wrapper">
-                    <span class="material-icons-outlined prefix-icon">label</span>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Honda City" 
-                      [(ngModel)]="vehicleModel" 
-                      name="vehicleModel" 
-                      required 
-                      class="form-input" />
+              <!-- Inline new custom vehicle setup fields -->
+              <div class="vehicle-details-subform slide-in" *ngIf="selectedVehicleId === 'custom'">
+                <div class="form-double-row">
+                  <div class="custom-input-group">
+                    <label>Vehicle Model Name</label>
+                    <div class="input-wrapper">
+                      <span class="material-icons-outlined prefix-icon">label</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Honda City"
+                        [(ngModel)]="vehicleModel"
+                        name="vehicleModel"
+                        [required]="selectedVehicleId === 'custom'"
+                        class="form-input" />
+                    </div>
+                  </div>
+                  <div class="custom-input-group">
+                    <label>Body Type</label>
+                    <div class="input-wrapper">
+                      <span class="material-icons-outlined prefix-icon">commute</span>
+                      <select [(ngModel)]="vehicleType" name="vehicleType" required class="form-select">
+                        <option value="Sedan">Sedan</option>
+                        <option value="Hatchback">Hatchback</option>
+                        <option value="SUV">SUV</option>
+                        <option value="EV">EV / Electric</option>
+                        <option value="Luxury">Premium / Luxury</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-                <div class="custom-input-group">
-                  <label>Vehicle Type</label>
-                  <div class="input-wrapper">
-                    <span class="material-icons-outlined prefix-icon">build</span>
-                    <select [(ngModel)]="vehicleType" name="vehicleType" required class="form-select">
-                      <option value="Sedan">Sedan</option>
-                      <option value="Hatchback">Hatchback</option>
-                      <option value="SUV">SUV</option>
-                      <option value="EV">EV</option>
-                      <option value="Luxury">Luxury</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
 
-              <!-- Vehicle Registration & Color -->
-              <div class="form-double-row">
-                <div class="custom-input-group">
-                  <label>Vehicle Registration Number</label>
-                  <div class="input-wrapper">
-                    <span class="material-icons-outlined prefix-icon">tag</span>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. MH-12-AB-2049" 
-                      [(ngModel)]="vehicleNumber" 
-                      name="vehicleNumber" 
-                      required 
-                      class="form-input" />
+                <!-- Vehicle Registration & Color -->
+                <div class="form-double-row">
+                  <div class="custom-input-group">
+                    <label>Vehicle Registration Number</label>
+                    <div class="input-wrapper">
+                      <span class="material-icons-outlined prefix-icon">tag</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. MH-12-AB-2049"
+                        [(ngModel)]="vehicleNumber"
+                        name="vehicleNumber"
+                        [required]="selectedVehicleId === 'custom'"
+                        class="form-input" />
+                    </div>
                   </div>
-                </div>
-                <div class="custom-input-group">
-                  <label>Vehicle Color</label>
-                  <div class="input-wrapper">
-                    <span class="material-icons-outlined prefix-icon">palette</span>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Portimao Blue" 
-                      [(ngModel)]="vehicleColor" 
-                      name="vehicleColor" 
-                      required 
-                      class="form-input" />
+                  <div class="custom-input-group">
+                    <label>Vehicle Color</label>
+                    <div class="input-wrapper">
+                      <span class="material-icons-outlined prefix-icon">palette</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Portimao Blue"
+                        [(ngModel)]="vehicleColor"
+                        name="vehicleColor"
+                        [required]="selectedVehicleId === 'custom'"
+                        class="form-input" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -421,10 +464,10 @@ interface PassengerRequest {
             <div class="custom-input-group">
               <label>About Ride (Optional)</label>
               <div class="input-wrapper">
-                <textarea 
-                  [(ngModel)]="about" 
-                  name="about" 
-                  placeholder="Tell passengers about AC status, music choice, baggage spaces, etc." 
+                <textarea
+                  [(ngModel)]="about"
+                  name="about"
+                  placeholder="Tell passengers about AC status, music choice, baggage spaces, etc."
                   class="form-textarea"></textarea>
               </div>
             </div>
@@ -435,13 +478,24 @@ interface PassengerRequest {
               <p>{{ rideStore.error() }}</p>
             </div>
 
-            <button 
-              type="submit" 
-              class="ripple-btn submit-btn" 
-              [disabled]="publishForm.invalid || rideStore.loading()">
-              <span class="spinner" *ngIf="rideStore.loading()"></span>
-              {{ rideStore.loading() ? 'Publishing...' : 'Offer Ride' }}
-            </button>
+            <div style="display: flex; gap: 12px; margin-top: 12px;">
+              <button
+                type="submit"
+                class="ripple-btn submit-btn"
+                [disabled]="publishForm.invalid || rideStore.loading() || !authStore.currentUser()?.phone"
+                style="flex: 2; margin-top: 0;">
+                <span class="spinner" *ngIf="rideStore.loading()"></span>
+                {{ rideStore.loading() ? (editingRideId ? 'Saving...' : 'Publishing...') : (editingRideId ? 'Save Changes' : 'Offer Ride') }}
+              </button>
+              <button
+                *ngIf="editingRideId"
+                type="button"
+                class="ripple-btn btn-secondary"
+                (click)="cancelEdit()"
+                style="flex: 1; padding: 14px;">
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -496,7 +550,7 @@ interface PassengerRequest {
       display: flex;
       flex-direction: column;
       gap: 16px;
-      
+
       &.scrollable-form {
         overflow-y: auto;
       }
@@ -613,7 +667,7 @@ interface PassengerRequest {
       font-weight: 700;
       padding: 8px;
       border-radius: var(--border-radius-sm);
-      
+
       &.accepted {
         background-color: rgba(52, 199, 89, 0.05);
         color: var(--color-secondary);
@@ -632,7 +686,7 @@ interface PassengerRequest {
       color: hsl(var(--text-secondary));
       display: flex;
       gap: 6px;
-      
+
       .paid-text { color: var(--color-secondary); }
       .pending-text { color: #ff9f0a; }
     }
@@ -718,7 +772,7 @@ interface PassengerRequest {
       background-color: rgba(255, 69, 58, 0.05);
       color: var(--color-danger);
       box-shadow: none;
-      
+
       &:hover {
         background-color: rgba(255, 69, 58, 0.1);
         box-shadow: none;
@@ -736,7 +790,7 @@ interface PassengerRequest {
       flex-direction: column;
       align-items: center;
       gap: 14px;
-      
+
       h3 { font-size: 1.15rem; }
       p { font-size: 0.8rem; color: hsl(var(--text-secondary)); max-width: 260px; line-height: 1.4; }
     }
@@ -829,7 +883,7 @@ interface PassengerRequest {
     .form-double-row {
       display: flex;
       gap: 12px;
-      
+
       .custom-input-group {
         flex: 1;
       }
@@ -997,7 +1051,7 @@ interface PassengerRequest {
       box-shadow: 0 4px 12px rgba(255, 159, 10, 0.25) !important;
       color: white !important;
     }
-    
+
     .confirm-cancel-btn {
       background-color: var(--color-danger) !important;
       color: white !important;
@@ -1019,7 +1073,7 @@ export class DriverComponent implements OnInit {
 
   activeTab: 'listings' | 'publish' = 'listings';
   confirmMarkPaidId: string | null = null;
-  
+
   // Driving License prompt logic
   tempLicenseNumber = '';
   licenseLoading = false;
@@ -1051,8 +1105,11 @@ export class DriverComponent implements OnInit {
   to = '';
   date = '';
   time = '';
+  arrivalTime = '';
   seats = 4;
   price = 350;
+  editingRideId: string | null = null;
+  hasActiveBookings = false;
 
   // Vehicle Selection parameters
   selectedVehicleId = 'custom';
@@ -1106,7 +1163,7 @@ export class DriverComponent implements OnInit {
   }
 
   ngOnInit() {
-    
+
     const today = new Date();
     this.minDate = today.toISOString().split('T')[0];
     this.date = this.minDate;
@@ -1115,7 +1172,7 @@ export class DriverComponent implements OnInit {
     if (user) {
       this.rideStore.loadOfferedRides(user.id);
       this.bookingStore.loadDriverBookings();
-      
+
       // Auto-populate first vehicle if exists
       if (user.registeredVehicles && user.registeredVehicles.length > 0) {
         const firstVeh = user.registeredVehicles[0];
@@ -1172,7 +1229,7 @@ export class DriverComponent implements OnInit {
   }
 
   onPublish() {
-    if (!this.from || !this.to || !this.date || !this.time || !this.vehicleModel || !this.vehicleNumber || !this.vehicleColor) return;
+    if (!this.from || !this.to || !this.date || !this.time || !this.arrivalTime || !this.vehicleModel || !this.vehicleNumber || !this.vehicleColor) return;
 
     const rideData = {
       startLocation: this.from,
@@ -1180,6 +1237,7 @@ export class DriverComponent implements OnInit {
       stops: [...this.stops],
       departureDate: this.date,
       departureTime: this.time,
+      arrivalTime: this.arrivalTime,
       availableSeats: Number(this.seats),
       totalSeats: Number(this.seats),
       pricePerSeat: Number(this.price),
@@ -1199,7 +1257,7 @@ export class DriverComponent implements OnInit {
       const isExisting = user.registeredVehicles?.some(
         (v: any) => v.numberPlate.toUpperCase().trim() === this.vehicleNumber.toUpperCase().trim()
       );
-      
+
       if (!isExisting) {
         const newVeh = {
           id: `veh_${Date.now()}`,
@@ -1208,36 +1266,102 @@ export class DriverComponent implements OnInit {
           type: this.vehicleType,
           color: this.vehicleColor
         };
-        
+
         const updatedVehicles = [...(user.registeredVehicles || []), newVeh];
         const updatedUser = {
           ...user,
           registeredVehicles: updatedVehicles
         };
-        
+
         // Save to AuthStore
         this.authStore.setCurrentUser(updatedUser);
-        
+
         // Set selected vehicle ID to the newly saved vehicle
         this.selectedVehicleId = newVeh.id;
       }
     }
 
-    this.rideStore.publishRide(rideData, () => {
+    const resetFormAndNavigate = () => {
       // Clear forms
       this.from = '';
       this.to = '';
+      this.date = this.minDate;
+      this.time = '';
+      this.arrivalTime = '';
       this.stops = [];
       this.about = '';
       this.price = 350;
       this.seats = 4;
-      
+      this.editingRideId = null;
+      this.hasActiveBookings = false;
+
       // Reload offered list and navigate back to listings tab
       if (user) {
         this.rideStore.loadOfferedRides(user.id);
       }
       this.switchTab('listings');
-    });
+    };
+
+    if (this.editingRideId) {
+      this.rideStore.editRide(this.editingRideId, rideData, resetFormAndNavigate);
+    } else {
+      this.rideStore.publishRide(rideData, resetFormAndNavigate);
+    }
+  }
+
+  isDeparted(ride: any): boolean {
+    try {
+      const [year, month, day] = ride.departureDate.split('-').map(Number);
+      const [hours, minutes] = ride.departureTime.split(':').map(Number);
+      const depDate = new Date(year, month - 1, day, hours, minutes);
+      return depDate < new Date();
+    } catch (e) {
+      return false;
+    }
+  }
+
+  startEditRide(ride: any) {
+    this.editingRideId = ride.id;
+    this.hasActiveBookings = ride.availableSeats < ride.totalSeats;
+
+    this.from = ride.startLocation;
+    this.to = ride.destination;
+    this.date = ride.departureDate;
+    this.time = ride.departureTime;
+    this.arrivalTime = ride.arrivalTime || '';
+    this.seats = ride.totalSeats;
+    this.price = ride.pricePerSeat;
+    this.stops = [...ride.stops];
+    this.about = ride.aboutRide || '';
+
+    if (ride.vehicle) {
+      this.selectedVehicleId = ride.vehicle.id || 'custom';
+      this.vehicleModel = ride.vehicle.model || '';
+      this.vehicleType = ride.vehicle.type || 'Sedan';
+      this.vehicleColor = ride.vehicle.color || '';
+      this.vehicleNumber = ride.vehicle.numberPlate || '';
+    } else {
+      this.selectedVehicleId = 'custom';
+    }
+
+    this.switchTab('publish');
+  }
+
+  cancelEdit() {
+    this.editingRideId = null;
+    this.hasActiveBookings = false;
+
+    this.from = '';
+    this.to = '';
+    this.date = this.minDate;
+    this.time = '';
+    this.arrivalTime = '';
+    this.seats = 4;
+    this.price = 350;
+    this.stops = [];
+    this.about = '';
+
+    this.switchTab('listings');
   }
 
   cancelOffer(rideId: string) {

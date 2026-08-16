@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -35,7 +35,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
       <!-- Verified driver badge status / license verification form -->
       <section class="profile-section glass-panel">
         <h4 class="section-title">Driver Credentials</h4>
-        
+
         <!-- Case 1: Driver is already registered and verified -->
         <div class="verified-driver-status slide-in" *ngIf="authStore.isDriver()">
           <span class="material-icons-outlined verified-icon">verified</span>
@@ -48,16 +48,16 @@ import { DonateDialogComponent } from './donate-dialog.component';
         <!-- Case 2: User is not registered as a driver yet -->
         <div class="driver-signup-form slide-in" *ngIf="!authStore.isDriver()">
           <p class="driver-prompt-text">Register as a driver to share your trip offers and save travel expenses.</p>
-          
+
           <form (ngSubmit)="verifyLicense()" #licenseForm="ngForm" class="license-submit-form">
             <div class="custom-input-group">
               <label>Driving License Number</label>
               <div class="input-wrapper">
                 <span class="material-icons-outlined prefix-icon">badge</span>
-                <input 
-                  type="text" 
-                  placeholder="e.g. DL-901239MH" 
-                  [(ngModel)]="licenseCode" 
+                <input
+                  type="text"
+                  placeholder="e.g. DL-901239MH"
+                  [(ngModel)]="licenseCode"
                   name="license"
                   required
                   #licInput="ngModel"
@@ -65,9 +65,9 @@ import { DonateDialogComponent } from './donate-dialog.component';
               </div>
             </div>
 
-            <button 
-              type="submit" 
-              class="ripple-btn verify-btn" 
+            <button
+              type="submit"
+              class="ripple-btn verify-btn"
               [disabled]="licenseForm.invalid || loading">
               <span class="spinner" *ngIf="loading"></span>
               {{ loading ? 'Saving credentials...' : 'Verify License Code' }}
@@ -76,21 +76,62 @@ import { DonateDialogComponent } from './donate-dialog.component';
         </div>
       </section>
 
+      <!-- Contact Information Section -->
+      <section class="profile-section glass-panel">
+        <h4 class="section-title">Contact Information</h4>
+        <form (ngSubmit)="savePhone()" #phoneForm="ngForm" class="license-submit-form" style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="custom-input-group">
+            <label>Mobile Number</label>
+            <div class="input-wrapper">
+              <span class="material-icons-outlined prefix-icon">phone</span>
+              <input
+                type="text"
+                placeholder="e.g. +919876543210"
+                [(ngModel)]="phoneValue"
+                name="phone"
+                required
+                pattern="^\\+?[1-9]\\d{1,14}$"
+                #phoneInput="ngModel"
+                class="search-input" />
+            </div>
+            <div class="validation-msg" *ngIf="phoneInput.invalid && phoneInput.touched" style="font-size: 0.72rem; color: var(--color-danger); font-weight: 600; margin-top: 2px;">
+              A valid phone number is required.
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            class="ripple-btn verify-btn"
+            [disabled]="phoneForm.invalid || phoneLoading"
+            style="width: 100%; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span class="spinner" *ngIf="phoneLoading"></span>
+            {{ phoneLoading ? 'Saving number...' : 'Update Phone Number' }}
+          </button>
+
+          <div style="font-size: 0.78rem; color: var(--color-secondary); font-weight: 600; text-align: center; margin-top: 4px;" *ngIf="phoneSuccess">
+            Phone number updated successfully!
+          </div>
+          <div style="font-size: 0.78rem; color: var(--color-danger); font-weight: 600; text-align: center; margin-top: 4px;" *ngIf="phoneError">
+            {{ phoneError }}
+          </div>
+        </form>
+      </section>
+
       <!-- Preferences and settings -->
       <section class="profile-section glass-panel">
         <h4 class="section-title">App Settings</h4>
-        
+
         <!-- Toggle Dark Mode -->
         <div class="setting-row">
           <div class="setting-meta">
             <span class="setting-title">Dark Theme Mode</span>
             <span class="setting-sub">Toggle dark aesthetic interface</span>
           </div>
-          
+
           <label class="ios-switch">
-            <input 
-              type="checkbox" 
-              [ngModel]="userStore.darkMode()" 
+            <input
+              type="checkbox"
+              [ngModel]="userStore.darkMode()"
               (ngModelChange)="toggleTheme()" />
             <span class="slider-switch"></span>
           </label>
@@ -100,7 +141,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
       <!-- Security Settings -->
       <section class="profile-section glass-panel">
         <h4 class="section-title">Security & Account</h4>
-        
+
         <!-- Setup Password -->
         <div class="setting-row" style="flex-direction: column; align-items: stretch; gap: 12px; padding: 12px 0;">
           <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -108,10 +149,10 @@ import { DonateDialogComponent } from './donate-dialog.component';
               <span class="setting-title">Account Password</span>
               <span class="setting-sub">Set password for email login capability</span>
             </div>
-            
-            <button 
-              type="button" 
-              class="ripple-btn" 
+
+            <button
+              type="button"
+              class="ripple-btn"
               style="padding: 8px 16px; font-size: 0.8rem; background-color: var(--color-primary); color: white; border: none; border-radius: 4px; cursor: pointer;"
               (click)="showPasswordForm = !showPasswordForm">
               {{ showPasswordForm ? 'Cancel' : 'Set Password' }}
@@ -124,10 +165,10 @@ import { DonateDialogComponent } from './donate-dialog.component';
               <div class="custom-input-group" style="display: flex; flex-direction: column; gap: 6px;">
                 <label style="font-size: 0.7rem; font-weight: 700; color: hsl(var(--text-tertiary)); text-transform: uppercase;">Choose Password</label>
                 <div class="input-wrapper" style="display: flex; align-items: center; border: 1px solid hsl(var(--border-light)); border-radius: var(--border-radius-sm); padding: 10px 12px; background-color: hsl(var(--bg-secondary));">
-                  <input 
-                    type="password" 
-                    placeholder="Min 8 characters" 
-                    [(ngModel)]="newPassword" 
+                  <input
+                    type="password"
+                    placeholder="Min 8 characters"
+                    [(ngModel)]="newPassword"
                     name="newPassword"
                     required
                     minlength="8"
@@ -135,14 +176,14 @@ import { DonateDialogComponent } from './donate-dialog.component';
                     style="border: none; background: none; outline: none; font-size: 0.9rem; color: hsl(var(--text-primary)); width: 100%;" />
                 </div>
               </div>
-              <button 
-                type="submit" 
-                class="ripple-btn" 
+              <button
+                type="submit"
+                class="ripple-btn"
                 [disabled]="passForm.invalid || passLoading"
                 style="padding: 10px; width: 100%; font-size: 0.85rem; border: none; border-radius: 4px; background-color: var(--color-primary); color: white; cursor: pointer;">
                 {{ passLoading ? 'Saving password...' : 'Save Password' }}
               </button>
-              
+
               <div style="font-size: 0.78rem; color: var(--color-secondary); font-weight: 600; text-align: center; margin-top: 4px;" *ngIf="passSuccess">
                 Password configured successfully!
               </div>
@@ -158,7 +199,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
       <section class="profile-section glass-panel">
         <h4 class="section-title">Legal & Community</h4>
         <div class="settings-list">
-          
+
           <!-- About -->
           <div class="setting-row clickable" (click)="openLegal('about')">
             <div class="setting-meta">
@@ -218,8 +259,8 @@ import { DonateDialogComponent } from './donate-dialog.component';
 
       <!-- Log out actions -->
       <div class="profile-actions">
-        <button 
-          class="ripple-btn btn-secondary logout-btn" 
+        <button
+          class="ripple-btn btn-secondary logout-btn"
           [class.confirm-logout-btn]="confirmLogout"
           (click)="onLogout()">
           <span class="material-icons-outlined">logout</span>
@@ -421,15 +462,15 @@ import { DonateDialogComponent } from './donate-dialog.component';
       display: inline-block;
       width: 46px;
       height: 26px;
-      
-      input { 
+
+      input {
         opacity: 0;
         width: 0;
         height: 0;
-        
+
         &:checked + .slider-switch {
           background-color: var(--color-secondary);
-          
+
           &::before {
             transform: translateX(20px);
           }
@@ -473,7 +514,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
       color: var(--color-danger);
       background-color: rgba(255, 69, 58, 0.05);
       border: 1px solid rgba(255, 69, 58, 0.1);
-      
+
       &:hover {
         background-color: rgba(255, 69, 58, 0.1);
       }
@@ -497,12 +538,12 @@ import { DonateDialogComponent } from './donate-dialog.component';
     .setting-row.clickable {
       cursor: pointer;
       transition: var(--transition-smooth);
-      
+
       &:hover {
         opacity: 0.85;
         transform: translateX(4px);
       }
-      
+
       .arrow-icon {
         color: hsl(var(--text-tertiary));
         font-size: 1.25rem;
@@ -511,7 +552,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
       .arrow-icon.text-danger {
         color: var(--color-danger);
       }
-      
+
       .font-sm {
         font-size: 0.65rem;
       }
@@ -531,7 +572,7 @@ import { DonateDialogComponent } from './donate-dialog.component';
     }
   `]
 })
-export class ProfileComponent {
+export class ProfileComponent implements OnInit {
   authStore = inject(AuthStore);
   userStore = inject(UserStore);
   private authService = inject(AuthService);
@@ -541,6 +582,36 @@ export class ProfileComponent {
   licenseCode = '';
   loading = false;
   confirmLogout = false;
+
+  phoneValue = '';
+  phoneLoading = false;
+  phoneSuccess = false;
+  phoneError = '';
+
+  ngOnInit() {
+    this.phoneValue = this.authStore.currentUser()?.phone || '';
+  }
+
+  savePhone() {
+    if (!this.phoneValue) return;
+    this.phoneLoading = true;
+    this.phoneSuccess = false;
+    this.phoneError = '';
+    this.authService.updatePhone(this.phoneValue).subscribe({
+      next: (updatedUser) => {
+        this.authStore.setCurrentUser(updatedUser);
+        this.phoneLoading = false;
+        this.phoneSuccess = true;
+        setTimeout(() => {
+          this.phoneSuccess = false;
+        }, 3000);
+      },
+      error: (err) => {
+        this.phoneError = err.error?.error || 'Failed to update phone number. Please try again.';
+        this.phoneLoading = false;
+      }
+    });
+  }
 
   // Security password config logic
   showPasswordForm = false;

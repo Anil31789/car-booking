@@ -42,7 +42,7 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
             </div>
             <div class="driver-info">
               <h4>{{ ride.driverName }}</h4>
-              <span class="driver-joined">Member since {{ ride.driverJoined }} &bull; {{ ride.driverTrips }} trips completed</span>
+              <span class="driver-joined">Member since {{ ride.driverJoined }} &bull; {{ ride.driverTrips }} {{ ride.driverTrips === 1 ? 'trip' : 'trips' }} completed</span>
               <app-star-rating [rating]="ride.driverRating"></app-star-rating>
             </div>
           </div>
@@ -103,7 +103,7 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
         </section>
 
         <!-- Reviews list -->
-        <section class="reviews-section glass-panel" *ngIf="!userStore.loading()">
+        <section class="reviews-section glass-panel">
           <div class="reviews-header-row">
             <h4 class="section-title">Passenger Reviews</h4>
             <button 
@@ -120,6 +120,18 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
             class="rate-driver-notice animate-fade-in">
             <span class="material-icons-outlined notice-icon">info</span>
             <span>You can rate this driver after completing a ride.</span>
+          </div>
+
+          <!-- Spinner inside section -->
+          <div class="reviews-loading-inline animate-fade-in" *ngIf="userStore.loading() && userStore.reviews().length === 0">
+            <span class="spinner-small"></span>
+            <span>Loading reviews...</span>
+          </div>
+
+          <!-- Error Alert for reviews loading -->
+          <div class="reviews-error-alert animate-fade-in" *ngIf="userStore.reviewsError() && userStore.reviews().length === 0">
+            <span class="material-icons-outlined error-icon">error_outline</span>
+            <span>{{ userStore.reviewsError() }}</span>
           </div>
           
           <div class="reviews-carousel" *ngIf="userStore.reviews().length > 0; else noReviews">
@@ -138,7 +150,7 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
             </div>
           </div>
           <ng-template #noReviews>
-            <p class="no-reviews-text">No reviews yet. Be the first to share your experience!</p>
+            <p class="no-reviews-text" *ngIf="!userStore.loading() && !userStore.reviewsError()">No reviews yet. Be the first to share your experience!</p>
           </ng-template>
         </section>
 
@@ -198,6 +210,21 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
                   name="comment" 
                   placeholder="Share details of your travel comfort, communication, cleanliness, etc." 
                   class="form-textarea"></textarea>
+              </div>
+            </div>
+
+            <!-- Error messages inside the modal -->
+            <div *ngIf="userStore.submitError() as errorMsg">
+              <!-- Case A: Validation error (e.g. duplicate review) -->
+              <div class="review-warning-alert animate-fade-in" *ngIf="errorMsg.includes('already submitted')">
+                <span class="material-icons-outlined error-icon">warning</span>
+                <span>{{ errorMsg }}</span>
+              </div>
+
+              <!-- Case B: PostgreSQL / Connection / Server error -->
+              <div class="review-error-alert animate-fade-in" *ngIf="!errorMsg.includes('already submitted')">
+                <span class="material-icons-outlined error-icon">error_outline</span>
+                <span>Temporary connection or server error: {{ errorMsg }}</span>
               </div>
             </div>
 
@@ -467,6 +494,52 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
     /* Reviews section */
     .reviews-section {
       padding: 18px;
+    }
+
+    .review-error-alert, .reviews-error-alert {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background-color: rgba(255, 69, 58, 0.1);
+      border: 1px solid rgba(255, 69, 58, 0.25);
+      color: var(--color-danger, #ff453a);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .review-warning-alert {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background-color: rgba(255, 179, 0, 0.1);
+      border: 1px solid rgba(255, 179, 0, 0.25);
+      color: #cc8e00;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .reviews-loading-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      color: hsl(var(--text-secondary));
+      font-size: 0.8rem;
+    }
+
+    .spinner-small {
+      width: 16px;
+      height: 16px;
+      border: 2px solid hsl(var(--border-light));
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }
 
     .reviews-carousel {
@@ -874,6 +947,7 @@ export class RideDetailsComponent implements OnInit {
     this.selectedRating = 0;
     this.hoverRating = 0;
     this.reviewComment = '';
+    this.userStore.submitError.set(null);
     this.showReviewModal = true;
   }
 
@@ -926,10 +1000,9 @@ export class RideDetailsComponent implements OnInit {
         () => {
           // Reload the active ride details to update the average rating on the UI
           this.rideStore.loadRideDetails(ride.id);
+          this.closeReviewModal();
         }
       );
-
-      this.closeReviewModal();
     }
   }
 

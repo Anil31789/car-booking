@@ -36,4 +36,8 @@ export class RideService {
   updateRideSeats(id: string, availableSeats: number): Observable<boolean> {
     return this.http.post<boolean>(`/api/rides/${id}/seats`, { availableSeats });
   }
+
+  updateRide(id: string, rideData: Partial<Ride>): Observable<Ride> {
+    return this.http.put<Ride>(`/api/rides/${id}`, rideData);
+  }
 }

@@ -56,7 +56,7 @@ export class BookingStore {
     this.bookingService.cancelBooking(bookingId).subscribe({
       next: () => {
         this.bookings.update(list => 
-          list.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, paymentStatus: 'Refunded' as const } : b)
+          list.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, paymentStatus: 'Refunded' as const, cancelledBy: 'passenger' } : b)
         );
         this.loading.set(false);
       },

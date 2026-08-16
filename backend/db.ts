@@ -34,7 +34,7 @@ export async function initDatabase() {
 
     pool = new Pool({
       connectionString,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
       max: 10,
       idleTimeoutMillis: 30000,
       ssl: useSsl ? { rejectUnauthorized: false } : false
@@ -136,7 +136,8 @@ async function runSchemaDDL() {
       booking_date VARCHAR(50) NOT NULL,
       payment_method VARCHAR(20) CHECK (payment_method IN ('UPI', 'Card', 'Wallet', 'Cash')),
       payment_status VARCHAR(20) CHECK (payment_status IN ('Paid', 'Refunded', 'Pending')),
-      selected_seats INT[] DEFAULT '{}'
+      selected_seats INT[] DEFAULT '{}',
+      cancelled_by VARCHAR(50)
     );
 
     CREATE TABLE IF NOT EXISTS reviews (
@@ -209,6 +210,16 @@ async function runSchemaDDL() {
       
       ALTER TABLE bookings DROP CONSTRAINT IF EXISTS bookings_status_check;
       ALTER TABLE bookings ADD CONSTRAINT bookings_status_check CHECK (status IN ('pending', 'upcoming', 'completed', 'cancelled'));
+    `);
+
+    // 4. Add cancelled_by to bookings if it doesn't exist
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='cancelled_by') THEN
+          ALTER TABLE bookings ADD COLUMN cancelled_by VARCHAR(50);
+        END IF;
+      END $$;
     `);
 
     // 4. Add selected_seats column if it doesn't exist

@@ -2,6 +2,7 @@ import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AuthStore } from './auth.store';
+import { BookingStore } from './booking.store';
 
 export interface AppNotification {
   id: string;
@@ -21,6 +22,7 @@ export class NotificationStore {
   private http = inject(HttpClient);
   private authStore = inject(AuthStore);
   private platformId = inject(PLATFORM_ID);
+  private bookingStore = inject(BookingStore);
   private pollIntervalId: any = null;
 
   notifications = signal<AppNotification[]>([]);
@@ -58,7 +60,21 @@ export class NotificationStore {
     }
     this.http.get<AppNotification[]>('/api/notifications').subscribe({
       next: (list) => {
+        const prevUnreadCount = this.notifications().filter(n => !n.isRead && n.type === 'booking_request').length;
+        const newUnreadCount = list.filter(n => !n.isRead && n.type === 'booking_request').length;
+
+        const prevAcceptedCount = this.notifications().filter(n => !n.isRead && n.type === 'booking_accepted').length;
+        const newAcceptedCount = list.filter(n => !n.isRead && n.type === 'booking_accepted').length;
+
         this.notifications.set(list);
+
+        const user = this.authStore.currentUser();
+        if (newUnreadCount > prevUnreadCount) {
+          this.bookingStore.loadDriverBookings();
+        }
+        if (user && newAcceptedCount > prevAcceptedCount) {
+          this.bookingStore.loadBookings(user.id);
+        }
       },
       error: (err) => console.error('Load notifications failed:', err)
     });

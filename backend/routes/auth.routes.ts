@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { dbQuery, isFallback, memoryDb } from '../db.js';
 import { emailProvider } from '../services/email.service.js';
 import passport from '../config/passport.js';
+import { sensitiveLimiter } from '../middleware/rate-limiter.js';
 
 const router = Router();
 const JWT_SECRET = process.env.NODE_ENV === 'production'
@@ -51,14 +52,28 @@ export async function getUserStats(userId: string): Promise<{ joinedDate: string
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const joinedDate = `${months[date.getMonth()]} ${date.getFullYear()}`;
     const bookingsCount = memoryDb.bookings.filter(b => b.passenger_id === userId && b.status === 'completed').length;
-    const ridesCount = memoryDb.rides.filter(r => r.driver_id === userId && r.status === 'completed').length;
+    const ridesCount = [...new Set(
+      memoryDb.bookings
+        .filter(b => b.status === 'completed')
+        .map(b => b.ride_id)
+    )].filter(rideId => {
+      const r = memoryDb.rides.find(ride => ride.id === rideId);
+      return r && r.driver_id === userId && r.status !== 'cancelled';
+    }).length;
     return { joinedDate, tripsCount: bookingsCount + ridesCount };
   } else {
     const q = `
-      SELECT 
+      SELECT
         TO_CHAR(created_at, 'Mon YYYY') AS joined_date,
         (SELECT COUNT(*) FROM bookings WHERE passenger_id = $1 AND status = 'completed') +
-        (SELECT COUNT(*) FROM rides WHERE driver_id = $1 AND status = 'completed') AS trips_count
+        COALESCE((
+          SELECT COUNT(DISTINCT r.id)
+          FROM rides r
+          JOIN bookings b ON b.ride_id = r.id
+          WHERE r.driver_id = $1
+            AND r.status != 'cancelled'
+            AND b.status = 'completed'
+        ), 0) AS trips_count
       FROM users
       WHERE id = $1
     `;
@@ -88,7 +103,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 }
 
 // 1. POST /api/auth/register (Email + Password sign up)
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', sensitiveLimiter, async (req: Request, res: Response) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -180,7 +195,7 @@ router.post('/register', async (req: Request, res: Response) => {
 });
 
 // 2. GET /api/auth/verify-email (Verify registration callback)
-router.get('/verify-email', async (req: Request, res: Response) => {
+router.get('/verify-email', sensitiveLimiter, async (req: Request, res: Response) => {
   const { token, email } = req.query;
   console.log(`[Email Verification] Received verification request. Token: ${token}, Email: ${email}`);
 
@@ -261,7 +276,7 @@ router.get('/verify-email', async (req: Request, res: Response) => {
 });
 
 // 3. POST /api/auth/login (Email + Password authentication)
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', sensitiveLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -501,7 +516,7 @@ router.post('/google', async (req: Request, res: Response) => {
 });
 
 // 5. POST /api/auth/set-password (Configure password for Google Sign-In users)
-router.post('/set-password', authenticateToken, async (req: Request, res: Response) => {
+router.post('/set-password', authenticateToken, sensitiveLimiter, async (req: Request, res: Response) => {
   const decoded = (req as any).user;
   const { password } = req.body;
 
@@ -529,7 +544,7 @@ router.post('/set-password', authenticateToken, async (req: Request, res: Respon
 });
 
 // 6. POST /api/auth/forgot-password (Forgot password trigger)
-router.post('/forgot-password', async (req: Request, res: Response) => {
+router.post('/forgot-password', sensitiveLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email address is required' });
 
@@ -583,7 +598,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 });
 
 // 7. POST /api/auth/reset-password (Reset password handler)
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', sensitiveLimiter, async (req: Request, res: Response) => {
   const { token, newPassword } = req.body;
   const hasLetter = /[a-zA-Z]/.test(newPassword || '');
   const hasNumber = /[0-9]/.test(newPassword || '');
@@ -669,6 +684,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
       createdAt: user.created_at,
+      tripsCount: stats.tripsCount,
       driverDetails: user.license_number ? {
         rating: Number(user.rating) || 5.0,
         reviewsCount: user.reviews_count,
@@ -712,8 +728,8 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
       }
     } else {
       const updateRes = await dbQuery(
-        `UPDATE users 
-         SET license_placeholder = $1, license_number = $1, is_license_verified = TRUE 
+        `UPDATE users
+         SET license_placeholder = $1, license_number = $1, is_license_verified = TRUE
          WHERE id = $2 RETURNING *`,
         [licenseCode, decoded.userId]
       );
@@ -743,6 +759,7 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
       createdAt: user.created_at,
+      tripsCount: stats.tripsCount,
       driverDetails: {
         rating: Number(user.rating) || 5.0,
         reviewsCount: user.reviews_count,
@@ -763,6 +780,89 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
     return res.json(responseUser);
   } catch (err: any) {
     console.error('License Update Error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 9b. POST /api/auth/phone (Update phone number)
+router.post('/phone', authenticateToken, sensitiveLimiter, async (req: Request, res: Response) => {
+  const decoded = (req as any).user;
+  const { phone } = req.body;
+  if (!phone || phone.trim() === '') {
+    return res.status(400).json({ error: 'Phone number is required' });
+  }
+
+  const phoneClean = phone.trim();
+
+  try {
+    let user: any = null;
+
+    if (isFallback) {
+      const idx = memoryDb.users.findIndex(u => u.id === decoded.userId);
+      if (idx !== -1) {
+        memoryDb.users[idx].phone = phoneClean;
+        memoryDb.users[idx].is_mobile_verified = true;
+        user = memoryDb.users[idx];
+      }
+    } else {
+      // Check if phone number is already registered by someone else
+      const dupCheck = await dbQuery('SELECT id FROM users WHERE phone = $1 AND id != $2', [phoneClean, decoded.userId]);
+      if (dupCheck.rows.length > 0) {
+        return res.status(400).json({ error: 'This phone number is already registered' });
+      }
+
+      const updateRes = await dbQuery(
+        `UPDATE users
+         SET phone = $1, is_mobile_verified = TRUE
+         WHERE id = $2 RETURNING *`,
+        [phoneClean, decoded.userId]
+      );
+      if (updateRes.rows.length > 0) {
+        user = updateRes.rows[0];
+      }
+    }
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let registeredVehicles: any[] = [];
+    if (isFallback) {
+      registeredVehicles = memoryDb.vehicles.filter(v => v.user_id === user.id);
+    } else {
+      const vehRes = await dbQuery('SELECT * FROM vehicles WHERE user_id = $1', [user.id]);
+      registeredVehicles = vehRes.rows;
+    }
+
+    const stats = await getUserStats(user.id);
+    const responseUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      photoUrl: user.photo_url,
+      isMobileVerified: user.is_mobile_verified,
+      isEmailVerified: user.is_email_verified,
+      licensePlaceholder: user.license_placeholder || user.license_number,
+      createdAt: user.created_at,
+      driverDetails: user.license_number ? {
+        rating: Number(user.rating) || 5.0,
+        reviewsCount: user.reviews_count,
+        licenseNumber: user.license_number,
+        isLicenseVerified: user.is_license_verified,
+        joinedDate: stats.joinedDate,
+        tripsCount: stats.tripsCount
+      } : null,
+      registeredVehicles: registeredVehicles.map(v => ({
+        id: v.id,
+        model: v.model,
+        numberPlate: v.number_plate,
+        type: v.type,
+        color: v.color
+      }))
+    };
+
+    return res.json(responseUser);
+  } catch (err: any) {
+    console.error('Phone Update Error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 });

@@ -26,7 +26,7 @@ export class AuthService {
   }
 
   verifyEmail(token: string, email?: string): Observable<{ success: boolean, message: string }> {
-    const url = email 
+    const url = email
       ? `/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`
       : `/api/auth/verify-email?token=${token}`;
     return this.http.get<{ success: boolean, message: string }>(url);
@@ -50,6 +50,10 @@ export class AuthService {
 
   updateProfileLicense(licenseCode: string): Observable<User> {
     return this.http.post<User>('/api/auth/license', { licenseCode });
+  }
+
+  updatePhone(phone: string): Observable<User> {
+    return this.http.post<User>('/api/auth/phone', { phone });
   }
 
   demoLogin(role: 'passenger' | 'driver'): Observable<{ user: User, token: string, refreshToken: string }> {

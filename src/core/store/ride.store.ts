@@ -112,4 +112,20 @@ export class RideStore {
       }
     });
   }
+
+  editRide(rideId: string, rideData: Partial<Ride>, onSuccess: () => void) {
+    this.loading.set(true);
+    this.error.set(null);
+    this.rideService.updateRide(rideId, rideData).subscribe({
+      next: (updatedRide) => {
+        this.offeredRides.update(list => list.map(r => r.id === rideId ? updatedRide : r));
+        this.loading.set(false);
+        onSuccess();
+      },
+      error: (err) => {
+        this.error.set(err.error?.error || 'Failed to edit ride');
+        this.loading.set(false);
+      }
+    });
+  }
 }

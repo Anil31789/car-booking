@@ -410,14 +410,14 @@ export class MainLayoutComponent {
   getNotificationIcon(type: string): string {
     if (type === 'booking_request') return 'hail';
     if (type === 'booking_accepted') return 'check_circle';
-    if (type === 'booking_rejected') return 'cancel';
+    if (type === 'booking_rejected' || type === 'booking_cancelled' || type === 'ride_cancelled') return 'cancel';
     return 'notifications';
   }
 
   getNotificationColor(type: string): string {
     if (type === 'booking_request') return 'var(--color-primary)';
     if (type === 'booking_accepted') return 'var(--color-secondary)';
-    if (type === 'booking_rejected') return 'var(--color-danger)';
+    if (type === 'booking_rejected' || type === 'booking_cancelled' || type === 'ride_cancelled') return 'var(--color-danger)';
     return 'hsl(var(--text-secondary))';
   }
 

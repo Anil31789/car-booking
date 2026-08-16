@@ -13,6 +13,8 @@ export class UserStore {
   darkMode = signal<boolean>(false);
   reviews = signal<Review[]>([]);
   loading = signal<boolean>(false);
+  reviewsError = signal<string | null>(null);
+  submitError = signal<string | null>(null);
 
   constructor() {
     // Read initial theme preference from LocalStorage inside browser
@@ -41,17 +43,22 @@ export class UserStore {
 
   loadReviews(driverId: string) {
     this.loading.set(true);
+    this.reviewsError.set(null);
     this.http.get<Review[]>(`/api/users/${driverId}/reviews`).subscribe({
       next: (list) => {
         this.reviews.set(list);
         this.loading.set(false);
       },
-      error: () => this.loading.set(false)
+      error: (err) => {
+        this.reviewsError.set(err.error?.error || 'Failed to load reviews');
+        this.loading.set(false);
+      }
     });
   }
 
   submitReview(driverId: string, rating: number, comment: string, reviewerName: string, reviewerPhoto: string, bookingId: string, onSuccess?: () => void) {
     this.loading.set(true);
+    this.submitError.set(null);
     const payload = { rating, comment, reviewerName, reviewerPhoto, bookingId };
     this.http.post<Review>(`/api/users/${driverId}/reviews`, payload).subscribe({
       next: (newReview) => {
@@ -59,7 +66,14 @@ export class UserStore {
         this.loading.set(false);
         if (onSuccess) onSuccess();
       },
-      error: () => this.loading.set(false)
+      error: (err) => {
+        const errorMsg = err.error?.error || 'Failed to submit review';
+        this.submitError.set(errorMsg);
+        this.loading.set(false);
+        if (errorMsg.includes('already submitted')) {
+          this.loadReviews(driverId);
+        }
+      }
     });
   }
 }
