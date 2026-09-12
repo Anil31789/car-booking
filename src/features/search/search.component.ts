@@ -66,7 +66,7 @@ import { SearchQuery, RideFilters } from '../../core/models/ride.models';
             <div class="edit-divider"></div>
             <div class="edit-input-row">
               <span class="material-icons-outlined">group</span>
-              <select [(ngModel)]="editPassengers" style="border:none; outline:none; font-weight:600; width:100%; color:hsl(var(--text-primary)); background:none; cursor:pointer;">
+              <select [(ngModel)]="editPassengers" style="border:none; outline:none; font-weight:600; width:100%; color:hsl(var(--text-primary)); background:hsl(var(--bg-secondary)); cursor:pointer;">
                 <option *ngFor="let num of [1, 2, 3, 4, 5, 6]" [value]="num">{{ num }} seat{{ num > 1 ? 's' : '' }}</option>
               </select>
             </div>
@@ -81,7 +81,7 @@ import { SearchQuery, RideFilters } from '../../core/models/ride.models';
       <section class="quick-controls">
         <div class="sort-selector">
           <span class="material-icons-outlined sort-icon">sort</span>
-          <select [ngModel]="rideStore.filters().sortBy" (ngModelChange)="onSortChange($event)">
+          <select [ngModel]="rideStore.filters().sortBy" (ngModelChange)="onSortChange($event)" style="border:none; outline:none; font-weight:600; width:100%; color:hsl(var(--text-primary)); background:hsl(var(--bg-primary)); cursor:pointer;">
             <option value="price_asc">Lowest Price</option>
             <option value="time_asc">Earliest Departure</option>
             <option value="rating_desc">Highest Rating</option>
@@ -840,7 +840,7 @@ export class SearchComponent implements OnInit {
 
   applyEditSearch() {
     if (!this.editFrom || !this.editTo || !this.editDate) return;
-    
+
     const query: SearchQuery = {
       from: this.editFrom,
       to: this.editTo,
