@@ -2,6 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { join } from 'path';
 import { memoryDb } from '../db.js';
 import bookingRouter from '../routes/booking.routes.js';
 import rideRouter from '../routes/ride.routes.js';
@@ -30,7 +31,11 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
 
     app = express();
     app.set('trust proxy', true);
-    app.use(express.json());
+    app.use(express.json({ limit: '10mb' }));
+
+    const uploadsDir = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
+    app.use('/uploads', express.static(uploadsDir));
+    app.use('/api/uploads', express.static(uploadsDir));
 
     // Apply general limiter globally
     app.use('/api', generalLimiter);
@@ -1140,5 +1145,392 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
     // 6. Reviews from another booking are not mixed into the current booking
     const otherReviewCheck = memoryDb.reviews.find(r => r.booking_id === otherBId);
     assert.strictEqual(otherReviewCheck, undefined);
+  });
+
+  test('22. Profile Photo Upload, Validation, Removal & Privacy Rules', async () => {
+    const uId = 'usr_photo_t22';
+    const uEmail = 'photo_t22@test.com';
+    const uToken = signToken(uId, uEmail);
+
+    memoryDb.users.push({
+      id: uId,
+      name: 'Photo Test User',
+      email: uEmail,
+      phone: '9998887776',
+      photo_url: null
+    });
+
+    // 1. Unauthorized upload attempt (no token) -> 401
+    const unauthRes = await fetch(`${baseUrl}/users/me/photo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' })
+    });
+    assert.strictEqual(unauthRes.status, 401);
+
+    // 2. Invalid image format -> 400
+    const invalidFmtRes = await fetch(`${baseUrl}/users/me/photo`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${uToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ photo: 'data:text/plain;base64,SGVsbG8=' })
+    });
+    assert.strictEqual(invalidFmtRes.status, 400);
+
+    // 3. Oversized image (> 5MB) -> 400
+    const oversizedBase64 = 'data:image/png;base64,' + 'A'.repeat(8 * 1024 * 1024);
+    const oversizedRes = await fetch(`${baseUrl}/users/me/photo`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${uToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ photo: oversizedBase64 })
+    });
+    assert.strictEqual(oversizedRes.status, 400);
+
+    // 4. Valid image upload -> 200 OK
+    const samplePng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const validRes = await fetch(`${baseUrl}/users/me/photo`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${uToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ photo: samplePng })
+    });
+    assert.strictEqual(validRes.status, 200);
+    const validJson = await validRes.json();
+    assert.strictEqual(validJson.success, true);
+    assert.ok(validJson.photoUrl.startsWith('/api/uploads/profile-photos/'));
+
+    // 4b. Verify static serving via GET /api/uploads/... -> 200 OK
+    const staticRes = await fetch(`http://localhost:${port}${validJson.photoUrl}`);
+    assert.strictEqual(staticRes.status, 200);
+
+    // 4c. Verify dual static serving via GET /uploads/... -> 200 OK
+    const dualStaticRes = await fetch(`http://localhost:${port}${validJson.photoUrl.replace('/api', '')}`);
+    assert.strictEqual(dualStaticRes.status, 200);
+
+    // 5. GET /api/auth/me returns updated photoUrl
+    const meRes = await fetch(`${baseUrl}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${uToken}` }
+    });
+    assert.strictEqual(meRes.status, 200);
+    const meJson = await meRes.json();
+    assert.strictEqual(meJson.photoUrl, validJson.photoUrl);
+
+    // 6. Photo removal -> 200 OK
+    const removeRes = await fetch(`${baseUrl}/users/me/photo`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${uToken}` }
+    });
+    assert.strictEqual(removeRes.status, 200);
+    const removeJson = await removeRes.json();
+    assert.strictEqual(removeJson.photoUrl, null);
+
+    // Verify static file is removed from disk -> 404
+    const staticResAfterDelete = await fetch(`http://localhost:${port}${validJson.photoUrl}`);
+    assert.strictEqual(staticResAfterDelete.status, 404);
+
+    // GET /api/auth/me verifies photoUrl is cleared
+    const meRes2 = await fetch(`${baseUrl}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${uToken}` }
+    });
+    assert.strictEqual(meRes2.status, 200);
+    const meJson2 = await meRes2.json();
+    assert.strictEqual(meJson2.photoUrl, null);
+  });
+
+  test('23. WhatsApp & Call contact options with booking privacy rules', async () => {
+    // Setup driver, passenger, stranger, ride, and pending booking
+    memoryDb.users = [
+      { id: 'u_drv_wa', name: 'Raj Driver', email: 'driver_wa@test.com', phone: '9876543210', rating: 4.8, reviews_count: 5 },
+      { id: 'u_pass_wa', name: 'Priya Passenger', email: 'passenger_wa@test.com', phone: '+91 91234-56789', rating: 5.0, reviews_count: 2 },
+      { id: 'u_stranger_wa', name: 'Stranger User', email: 'stranger_wa@test.com', phone: '9998887776', rating: 5.0, reviews_count: 0 }
+    ];
+    memoryDb.vehicles = [
+      { id: 'v_wa', user_id: 'u_drv_wa', model: 'Honda City', number_plate: 'MH 12 AB 1234', type: 'Sedan', color: 'White' }
+    ];
+    memoryDb.rides = [
+      {
+        id: 'r_wa_1',
+        driver_id: 'u_drv_wa',
+        vehicle_id: 'v_wa',
+        start_location: 'Mumbai',
+        destination: 'Pune',
+        departure_date: '2026-10-10',
+        departure_time: '09:00',
+        total_seats: 4,
+        available_seats: 3,
+        price_per_seat: 400
+      }
+    ];
+    memoryDb.bookings = [
+      {
+        id: 'b_wa_pending',
+        ride_id: 'r_wa_1',
+        passenger_id: 'u_pass_wa',
+        seats_booked: 1,
+        total_price: 400,
+        status: 'pending',
+        booking_date: '2026-09-17',
+        payment_method: 'UPI',
+        payment_status: 'Pending'
+      }
+    ];
+
+    const drvToken = signToken('u_drv_wa', 'driver_wa@test.com');
+    const passToken = signToken('u_pass_wa', 'passenger_wa@test.com');
+    const strangerToken = signToken('u_stranger_wa', 'stranger_wa@test.com');
+
+    // 1. Unauthenticated or public query for ride details should NOT expose driver phone
+    const publicRideRes = await fetch(`${baseUrl}/rides/r_wa_1`);
+    assert.strictEqual(publicRideRes.status, 200);
+    const publicRideJson = await publicRideRes.json();
+    assert.strictEqual(publicRideJson.driverPhone, null);
+
+    // 2. Stranger authenticated query for ride details should NOT expose driver phone
+    const strangerRideRes = await fetch(`${baseUrl}/rides/r_wa_1`, {
+      headers: { 'Authorization': `Bearer ${strangerToken}` }
+    });
+    assert.strictEqual(strangerRideRes.status, 200);
+    const strangerRideJson = await strangerRideRes.json();
+    assert.strictEqual(strangerRideJson.driverPhone, null);
+
+    // 3. Passenger with PENDING booking should NOT see driver phone in My Bookings or Ride Details
+    const pendingBkRes = await fetch(`${baseUrl}/bookings/user/u_pass_wa`, {
+      headers: { 'Authorization': `Bearer ${passToken}` }
+    });
+    assert.strictEqual(pendingBkRes.status, 200);
+    const pendingBkJson = await pendingBkRes.json();
+    const myPendingBk = pendingBkJson.find((b: any) => b.id === 'b_wa_pending');
+    assert.ok(myPendingBk);
+    assert.strictEqual(myPendingBk.ride.driverPhone, null);
+
+    // 4. Driver with PENDING request should NOT see passenger phone in Driver Requests
+    const drvReqRes = await fetch(`${baseUrl}/bookings/driver`, {
+      headers: { 'Authorization': `Bearer ${drvToken}` }
+    });
+    assert.strictEqual(drvReqRes.status, 200);
+    const drvReqJson = await drvReqRes.json();
+    const drvPendingReq = drvReqJson.find((r: any) => r.id === 'b_wa_pending');
+    assert.ok(drvPendingReq);
+    assert.strictEqual(drvPendingReq.passengerPhone, null);
+
+    // 5. Driver accepts booking -> status becomes 'upcoming'
+    const acceptRes = await fetch(`${baseUrl}/bookings/b_wa_pending/accept`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${drvToken}` }
+    });
+    assert.strictEqual(acceptRes.status, 200);
+
+    // 6. Passenger now sees driverPhone in My Bookings & Ride Details
+    const acceptedBkRes = await fetch(`${baseUrl}/bookings/user/u_pass_wa`, {
+      headers: { 'Authorization': `Bearer ${passToken}` }
+    });
+    assert.strictEqual(acceptedBkRes.status, 200);
+    const acceptedBkJson = await acceptedBkRes.json();
+    const myAcceptedBk = acceptedBkJson.find((b: any) => b.id === 'b_wa_pending');
+    assert.ok(myAcceptedBk);
+    assert.strictEqual(myAcceptedBk.ride.driverPhone, '9876543210');
+
+    const passRideRes = await fetch(`${baseUrl}/rides/r_wa_1`, {
+      headers: { 'Authorization': `Bearer ${passToken}` }
+    });
+    assert.strictEqual(passRideRes.status, 200);
+    const passRideJson = await passRideRes.json();
+    assert.strictEqual(passRideJson.driverPhone, '9876543210');
+
+    // 7. Driver now sees passengerPhone in Driver Requests
+    const drvAcceptedReqRes = await fetch(`${baseUrl}/bookings/driver`, {
+      headers: { 'Authorization': `Bearer ${drvToken}` }
+    });
+    assert.strictEqual(drvAcceptedReqRes.status, 200);
+    const drvAcceptedReqJson = await drvAcceptedReqRes.json();
+    const drvAcceptedReq = drvAcceptedReqJson.find((r: any) => r.id === 'b_wa_pending');
+    assert.ok(drvAcceptedReq);
+    assert.strictEqual(drvAcceptedReq.passengerPhone, '+91 91234-56789');
+
+    // 8. Test WhatsApp deep link construction and phone normalization logic
+    const normalizePhoneForWhatsApp = (phone: string | null | undefined): string | null => {
+      if (!phone || typeof phone !== 'string') return null;
+      const digits = phone.replace(/\D/g, '');
+      if (!digits) return null;
+      if (digits.length === 10) return '91' + digits;
+      if (digits.length === 11 && digits.startsWith('0')) return '91' + digits.substring(1);
+      if (digits.length === 12 && digits.startsWith('91')) return digits;
+      if (digits.length >= 10 && digits.length <= 15) return digits;
+      return null;
+    };
+
+    const getWhatsAppUrl = (phone: string | null | undefined, originOrRoute?: string, destination?: string) => {
+      const normalized = normalizePhoneForWhatsApp(phone);
+      if (!normalized) return null;
+      let routeDesc = '';
+      if (originOrRoute && destination) {
+        routeDesc = `${originOrRoute.trim()} to ${destination.trim()}`;
+      } else if (originOrRoute) {
+        routeDesc = originOrRoute.trim();
+      } else {
+        routeDesc = 'our scheduled ride';
+      }
+      const message = `Hi, I have a HighwayPool booking with you for ${routeDesc}.`;
+      return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+    };
+
+    // Passenger contacting Driver via WhatsApp
+    const passengerToDriverWa = getWhatsAppUrl(
+      myAcceptedBk.ride.driverPhone,
+      myAcceptedBk.ride.startLocation,
+      myAcceptedBk.ride.destination
+    );
+    assert.strictEqual(
+      passengerToDriverWa,
+      'https://wa.me/919876543210?text=Hi%2C%20I%20have%20a%20HighwayPool%20booking%20with%20you%20for%20Mumbai%20to%20Pune.'
+    );
+
+    // Driver contacting Passenger via WhatsApp
+    const driverToPassengerWa = getWhatsAppUrl(
+      drvAcceptedReq.passengerPhone,
+      drvAcceptedReq.rideRoute
+    );
+    assert.strictEqual(
+      driverToPassengerWa,
+      'https://wa.me/919123456789?text=Hi%2C%20I%20have%20a%20HighwayPool%20booking%20with%20you%20for%20Mumbai%20to%20Pune.'
+    );
+
+    // Missing or invalid phone returns null gracefully
+    assert.strictEqual(getWhatsAppUrl(null, 'A', 'B'), null);
+    assert.strictEqual(getWhatsAppUrl('invalid_phone', 'A', 'B'), null);
+  });
+
+  test('25. Regression Test: Vehicle ID resolution and Foreign Key integrity in Create and Edit Ride', async () => {
+    // Setup existing vehicle in database with ID veh_me_1 and plate MH-12-HC-1029
+    memoryDb.users = [
+      { id: 'usr_me', name: 'Rohan Deshmukh', email: 'rohan@test.com', phone: '+919988776655', rating: 5.0, reviews_count: 0 }
+    ];
+    memoryDb.vehicles = [
+      {
+        id: 'veh_me_1',
+        user_id: 'usr_me',
+        model: 'Honda City 2020',
+        number_plate: 'MH-12-HC-1029',
+        type: 'Sedan',
+        color: 'Silver'
+      }
+    ];
+    memoryDb.rides = [];
+    memoryDb.bookings = [];
+
+    const token = signToken('usr_me', 'rohan@test.com');
+
+    // Scenario A: Client submits custom vehicle with new speculative ID 'veh_1789625063902'
+    // but the number plate 'MH-12-HC-1029' already exists in the vehicles table
+    const postRes = await fetch(`${baseUrl}/rides`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        startLocation: 'Mumbai',
+        destination: 'Pune',
+        departureDate: '2026-10-01',
+        departureTime: '08:00',
+        arrivalTime: '11:00',
+        totalSeats: 4,
+        availableSeats: 4,
+        pricePerSeat: 350,
+        vehicle: {
+          id: 'veh_1789625063902', // Stale/divergent client ID
+          model: 'Honda City 2024 Facelift',
+          numberPlate: 'MH-12-HC-1029', // Existing plate
+          type: 'Sedan',
+          color: 'Golden Brown'
+        },
+        aboutRide: 'Safe and comfortable drive.'
+      })
+    });
+
+    assert.strictEqual(postRes.status, 200, 'POST /rides must succeed with status 200');
+    const createdRide: any = await postRes.json();
+    
+    // Crucial check: the ride's vehicle.id must be the real persistent DB id ('veh_me_1'),
+    // never the conflicting/stale client ID ('veh_1789625063902')
+    assert.strictEqual(createdRide.vehicle.id, 'veh_me_1', 'Ride vehicle_id must resolve to existing vehicle id');
+    assert.strictEqual(createdRide.vehicle.model, 'Honda City 2024 Facelift', 'Vehicle model should be updated');
+    assert.strictEqual(createdRide.vehicle.color, 'Golden Brown', 'Vehicle color should be updated');
+
+    // Ensure no duplicate or orphan vehicles were added in memory
+    const matchingVehicles = memoryDb.vehicles.filter(v => v.number_plate === 'MH-12-HC-1029');
+    assert.strictEqual(matchingVehicles.length, 1, 'Only one record must exist per unique number plate');
+    assert.strictEqual(matchingVehicles[0].id, 'veh_me_1');
+
+    // Scenario B: Edit ride with same plate and ensure vehicle resolution works cleanly
+    const putRes = await fetch(`${baseUrl}/rides/${createdRide.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        startLocation: 'Mumbai',
+        destination: 'Pune',
+        departureDate: '2026-10-01',
+        departureTime: '08:00',
+        arrivalTime: '11:00',
+        totalSeats: 4,
+        availableSeats: 4,
+        pricePerSeat: 400,
+        vehicle: {
+          id: 'veh_custom_new_9999', // Another speculative client ID
+          model: 'Honda City 2024 Executive',
+          numberPlate: 'MH-12-HC-1029',
+          type: 'Sedan',
+          color: 'Pearl White'
+        },
+        aboutRide: 'Updated ride info.'
+      })
+    });
+
+    assert.strictEqual(putRes.status, 200, 'PUT /rides/:id must succeed with status 200');
+    const updatedRide: any = await putRes.json();
+    assert.strictEqual(updatedRide.vehicle.id, 'veh_me_1', 'Edited ride must retain existing vehicle id');
+    assert.strictEqual(updatedRide.vehicle.color, 'Pearl White', 'Vehicle color must be updated on conflict');
+
+    // Scenario C: Create ride with brand new unique vehicle
+    const postNewVehRes = await fetch(`${baseUrl}/rides`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        startLocation: 'Pune',
+        destination: 'Nagpur',
+        departureDate: '2026-10-02',
+        departureTime: '06:00',
+        arrivalTime: '19:00',
+        totalSeats: 6,
+        availableSeats: 6,
+        pricePerSeat: 1100,
+        vehicle: {
+          id: 'veh_new_brand_123',
+          model: 'Tata Safari',
+          numberPlate: 'MH-14-TS-7777',
+          type: 'SUV',
+          color: 'Black'
+        },
+        aboutRide: 'Long distance trip.'
+      })
+    });
+
+    assert.strictEqual(postNewVehRes.status, 200, 'POST /rides with new vehicle must succeed');
+    const newRideData: any = await postNewVehRes.json();
+    assert.strictEqual(newRideData.vehicle.id, 'veh_new_brand_123');
+    assert.strictEqual(newRideData.vehicle.numberPlate, 'MH-14-TS-7777');
   });
 });

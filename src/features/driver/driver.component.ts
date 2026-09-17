@@ -9,6 +9,7 @@ import { Stop } from '../../core/models/ride.models';
 import { LocationAutocompleteComponent } from '../../shared/components/location-autocomplete.component';
 import { RideService } from '../../core/services/ride.service';
 import { AuthService } from '../../core/services/auth.service';
+import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
 
 interface PassengerRequest {
   id: string;
@@ -57,7 +58,8 @@ interface PassengerRequest {
               class="request-card glass-panel">
 
               <div class="req-header">
-                <div class="req-avatar" [style.background-color]="getAvatarColor(req.passengerName)">
+                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
+                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
                   {{ getInitials(req.passengerName) }}
                 </div>
                 <div class="req-meta">
@@ -94,7 +96,8 @@ interface PassengerRequest {
               class="request-card glass-panel">
 
               <div class="req-header">
-                <div class="req-avatar" [style.background-color]="getAvatarColor(req.passengerName)">
+                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
+                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
                   {{ getInitials(req.passengerName) }}
                 </div>
                 <div class="req-meta">
@@ -108,10 +111,30 @@ interface PassengerRequest {
                 Route: <strong>{{ req.rideRoute }}</strong>
               </p>
 
-              <p class="req-route-info" *ngIf="req.passengerPhone" style="margin-top: 4px; display: flex; align-items: center; gap: 4px;">
-                <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
-                Contact: <strong>{{ req.passengerPhone }}</strong>
-              </p>
+              <div class="req-contact-box" *ngIf="req.passengerPhone">
+                <p class="req-route-info" style="margin: 0; display: flex; align-items: center; gap: 4px;">
+                  <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
+                  Contact: <strong>{{ req.passengerPhone }}</strong>
+                </p>
+                <div class="contact-actions-row">
+                  <a *ngIf="getCallUrl(req.passengerPhone) as callUrl"
+                     [href]="callUrl"
+                     class="contact-action-btn call-btn"
+                     (click)="$event.stopPropagation()"
+                     title="Call Passenger">
+                    <span>📞 Call</span>
+                  </a>
+                  <a *ngIf="getWhatsAppUrl(req.passengerPhone, req.rideRoute) as waUrl"
+                     [href]="waUrl"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="contact-action-btn wa-btn"
+                     (click)="$event.stopPropagation()"
+                     title="Chat on WhatsApp">
+                    <span>💬 WhatsApp</span>
+                  </a>
+                </div>
+              </div>
 
               <div class="payment-summary-block">
                 <span>Method: <strong>{{ req.paymentMethod }}</strong></span> &bull;
@@ -594,6 +617,14 @@ interface PassengerRequest {
       gap: 12px;
     }
 
+    .req-avatar-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
     .req-avatar {
       width: 40px;
       height: 40px;
@@ -637,6 +668,58 @@ interface PassengerRequest {
       font-size: 0.78rem;
       color: hsl(var(--text-secondary));
       line-height: 1.3;
+    }
+
+    .req-contact-box {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .contact-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .contact-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: var(--transition-smooth);
+      cursor: pointer;
+      border: 1px solid transparent;
+
+      &.call-btn {
+        background: rgba(10, 132, 255, 0.12);
+        color: var(--color-primary);
+        border-color: rgba(10, 132, 255, 0.25);
+
+        &:hover {
+          background: rgba(10, 132, 255, 0.22);
+          transform: translateY(-1px);
+        }
+      }
+
+      &.wa-btn {
+        background: rgba(37, 211, 102, 0.14);
+        color: #15803d;
+        border-color: rgba(37, 211, 102, 0.35);
+
+        &:hover {
+          background: rgba(37, 211, 102, 0.25);
+          color: #166534;
+          transform: translateY(-1px);
+        }
+      }
     }
 
     .req-actions {
@@ -1231,6 +1314,18 @@ export class DriverComponent implements OnInit {
   onPublish() {
     if (!this.from || !this.to || !this.date || !this.time || !this.arrivalTime || !this.vehicleModel || !this.vehicleNumber || !this.vehicleColor) return;
 
+    const user = this.authStore.currentUser();
+    const normalizedPlate = this.vehicleNumber.toUpperCase().trim();
+
+    // Check if matching vehicle already exists in registeredVehicles
+    const existingVeh = user?.registeredVehicles?.find(
+      (v: any) => v.numberPlate?.toUpperCase().trim() === normalizedPlate
+    );
+
+    const vehicleId = existingVeh
+      ? existingVeh.id
+      : (this.selectedVehicleId === 'custom' ? `veh_${Date.now()}` : this.selectedVehicleId);
+
     const rideData = {
       startLocation: this.from,
       destination: this.to,
@@ -1242,43 +1337,33 @@ export class DriverComponent implements OnInit {
       totalSeats: Number(this.seats),
       pricePerSeat: Number(this.price),
       vehicle: {
-        id: this.selectedVehicleId === 'custom' ? `veh_${Date.now()}` : this.selectedVehicleId,
+        id: vehicleId,
         model: this.vehicleModel,
-        numberPlate: this.vehicleNumber.toUpperCase().trim(),
+        numberPlate: normalizedPlate,
         type: this.vehicleType,
         color: this.vehicleColor
       },
       aboutRide: this.about
     };
 
-    const user = this.authStore.currentUser();
-    if (user) {
-      // If it's a custom vehicle or we've updated it, check if we should add/update it in registered vehicles
-      const isExisting = user.registeredVehicles?.some(
-        (v: any) => v.numberPlate.toUpperCase().trim() === this.vehicleNumber.toUpperCase().trim()
-      );
+    if (user && !existingVeh) {
+      const newVeh = {
+        id: vehicleId,
+        model: this.vehicleModel,
+        numberPlate: normalizedPlate,
+        type: this.vehicleType,
+        color: this.vehicleColor
+      };
 
-      if (!isExisting) {
-        const newVeh = {
-          id: `veh_${Date.now()}`,
-          model: this.vehicleModel,
-          numberPlate: this.vehicleNumber.toUpperCase().trim(),
-          type: this.vehicleType,
-          color: this.vehicleColor
-        };
+      const updatedVehicles = [...(user.registeredVehicles || []), newVeh];
+      const updatedUser = {
+        ...user,
+        registeredVehicles: updatedVehicles
+      };
 
-        const updatedVehicles = [...(user.registeredVehicles || []), newVeh];
-        const updatedUser = {
-          ...user,
-          registeredVehicles: updatedVehicles
-        };
-
-        // Save to AuthStore
-        this.authStore.setCurrentUser(updatedUser);
-
-        // Set selected vehicle ID to the newly saved vehicle
-        this.selectedVehicleId = newVeh.id;
-      }
+      // Save to AuthStore
+      this.authStore.setCurrentUser(updatedUser);
+      this.selectedVehicleId = vehicleId;
     }
 
     const resetFormAndNavigate = () => {
@@ -1295,9 +1380,23 @@ export class DriverComponent implements OnInit {
       this.editingRideId = null;
       this.hasActiveBookings = false;
 
-      // Reload offered list and navigate back to listings tab
+      // Reload offered list and refresh user profile to synchronize persistent DB vehicle IDs
       if (user) {
         this.rideStore.loadOfferedRides(user.id);
+        this.authService.getCurrentUser().subscribe({
+          next: (refreshedUser) => {
+            if (refreshedUser) {
+              this.authStore.setCurrentUser(refreshedUser);
+              if (refreshedUser.registeredVehicles && refreshedUser.registeredVehicles.length > 0) {
+                const matched = refreshedUser.registeredVehicles.find(
+                  (v: any) => v.numberPlate?.toUpperCase().trim() === normalizedPlate
+                );
+                this.selectedVehicleId = matched ? matched.id : refreshedUser.registeredVehicles[0].id;
+                this.onVehicleSelectChange();
+              }
+            }
+          }
+        });
       }
       this.switchTab('listings');
     };
@@ -1404,5 +1503,13 @@ export class DriverComponent implements OnInit {
     }
     const h = Math.abs(hash) % 360;
     return `hsl(${h}, 65%, 45%)`;
+  }
+
+  getWhatsAppUrl(phone: string | null | undefined, originOrRoute?: string, destination?: string): string | null {
+    return getWhatsAppUrl(phone, originOrRoute, destination);
+  }
+
+  getCallUrl(phone: string | null | undefined): string | null {
+    return getCallUrl(phone);
   }
 }

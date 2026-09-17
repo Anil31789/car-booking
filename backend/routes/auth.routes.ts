@@ -88,6 +88,15 @@ export async function getUserStats(userId: string): Promise<{ joinedDate: string
   }
 }
 
+// Helper to format profile photo URL for seamless proxying (/api/uploads/...)
+export function formatPhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('/uploads/profile-photos/')) {
+    return '/api' + url;
+  }
+  return url;
+}
+
 // Middleware to verify JWT access token
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
@@ -326,7 +335,7 @@ router.post('/login', sensitiveLimiter, async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
@@ -484,7 +493,7 @@ router.post('/google', async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
@@ -679,7 +688,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
@@ -754,7 +763,7 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
@@ -838,7 +847,7 @@ router.post('/phone', authenticateToken, sensitiveLimiter, async (req: Request, 
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
@@ -911,7 +920,7 @@ router.post('/demo-login', async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      photoUrl: user.photo_url,
+      photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,

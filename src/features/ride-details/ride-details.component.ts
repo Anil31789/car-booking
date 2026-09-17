@@ -7,6 +7,7 @@ import { UserStore } from '../../core/store/user.store';
 import { AuthStore } from '../../core/store/auth.store';
 import { BookingStore } from '../../core/store/booking.store';
 import { StarRatingComponent } from '../../shared/components/star-rating.component';
+import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
 
 @Component({
   selector: 'app-ride-details',
@@ -36,8 +37,9 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
         <!-- Driver details -->
         <section class="driver-section glass-panel">
           <div class="driver-header">
-            <!-- Offline initials avatar -->
-            <div class="driver-avatar large" [style.background-color]="getAvatarColor(ride.driverName)">
+            <!-- Driver avatar photo with fallback -->
+            <img *ngIf="ride.driverPhoto && !ride.imageError" [src]="ride.driverPhoto" (error)="ride.imageError = true" [alt]="ride.driverName" class="driver-avatar-img large" />
+            <div class="driver-avatar large" *ngIf="!ride.driverPhoto || ride.imageError" [style.background-color]="getAvatarColor(ride.driverName)">
               {{ getInitials(ride.driverName) }}
             </div>
             <div class="driver-info">
@@ -46,9 +48,27 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
               <app-star-rating [rating]="ride.driverRating"></app-star-rating>
             </div>
           </div>
-          <div class="driver-phone" *ngIf="ride.driverPhone">
-            <span class="material-icons-outlined text-secondary">phone</span>
-            <span>{{ ride.driverPhone }}</span>
+          <div class="driver-contact-box" *ngIf="ride.driverPhone">
+            <div class="driver-phone">
+              <span class="material-icons-outlined text-secondary">phone</span>
+              <span>{{ ride.driverPhone }}</span>
+            </div>
+            <div class="contact-actions-row">
+              <a *ngIf="getCallUrl(ride.driverPhone) as callUrl"
+                 [href]="callUrl"
+                 class="contact-action-btn call-btn"
+                 title="Call Driver">
+                <span>📞 Call</span>
+              </a>
+              <a *ngIf="getWhatsAppUrl(ride.driverPhone, ride.startLocation, ride.destination) as waUrl"
+                 [href]="waUrl"
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 class="contact-action-btn wa-btn"
+                 title="Chat on WhatsApp">
+                <span>💬 WhatsApp</span>
+              </a>
+            </div>
           </div>
         </section>
 
@@ -137,7 +157,8 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
           <div class="reviews-carousel" *ngIf="userStore.reviews().length > 0; else noReviews">
             <div class="review-card slide-in" *ngFor="let rev of userStore.reviews()">
               <div class="rev-header">
-                <div class="rev-avatar" [style.background-color]="getAvatarColor(rev.reviewerName)">
+                <img *ngIf="rev.reviewerPhoto && !rev.imageError" [src]="rev.reviewerPhoto" (error)="rev.imageError = true" [alt]="rev.reviewerName" class="rev-avatar-img" />
+                <div class="rev-avatar" *ngIf="!rev.reviewerPhoto || rev.imageError" [style.background-color]="getAvatarColor(rev.reviewerName)">
                   {{ getInitials(rev.reviewerName) }}
                 </div>
                 <div class="rev-meta">
@@ -325,6 +346,28 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
       gap: 16px;
     }
 
+    .driver-avatar-img {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--color-primary);
+      flex-shrink: 0;
+
+      &.large {
+        width: 54px;
+        height: 54px;
+      }
+    }
+
+    .rev-avatar-img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
     .driver-avatar {
       width: 44px;
       height: 44px;
@@ -357,18 +400,69 @@ import { StarRatingComponent } from '../../shared/components/star-rating.compone
       font-weight: 500;
     }
 
+    .driver-contact-box {
+      margin-top: 14px;
+      border-top: 1px solid hsl(var(--border-light));
+      padding-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
     .driver-phone {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.82rem;
+      font-size: 0.85rem;
       font-weight: 700;
       color: hsl(var(--text-primary));
-      margin-top: 14px;
-      border-top: 1px solid hsl(var(--border-light));
-      padding-top: 12px;
 
-      span { font-size: 18px; }
+      span.material-icons-outlined { font-size: 18px; }
+    }
+
+    .contact-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .contact-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: var(--transition-smooth);
+      cursor: pointer;
+      border: 1px solid transparent;
+
+      &.call-btn {
+        background: rgba(10, 132, 255, 0.12);
+        color: var(--color-primary);
+        border-color: rgba(10, 132, 255, 0.25);
+
+        &:hover {
+          background: rgba(10, 132, 255, 0.22);
+          transform: translateY(-1px);
+        }
+      }
+
+      &.wa-btn {
+        background: rgba(37, 211, 102, 0.14);
+        color: #15803d;
+        border-color: rgba(37, 211, 102, 0.35);
+
+        &:hover {
+          background: rgba(37, 211, 102, 0.25);
+          color: #166534;
+          transform: translateY(-1px);
+        }
+      }
     }
 
     /* Timeline stops */
@@ -1033,5 +1127,13 @@ export class RideDetailsComponent implements OnInit {
     }
     const h = Math.abs(hash) % 360;
     return `hsl(${h}, 65%, 45%)`;
+  }
+
+  getWhatsAppUrl(phone: string | null | undefined, origin?: string, destination?: string): string | null {
+    return getWhatsAppUrl(phone, origin, destination);
+  }
+
+  getCallUrl(phone: string | null | undefined): string | null {
+    return getCallUrl(phone);
   }
 }

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { dbQuery, isFallback, memoryDb, pool, createNotification } from '../db.js';
-import { authenticateToken } from './auth.routes.js';
+import { authenticateToken, formatPhotoUrl } from './auth.routes.js';
 
 const router = Router();
 
@@ -430,7 +430,7 @@ router.get('/driver', authenticateToken, async (req: Request, res: Response) => 
         return {
           id: b.id,
           passengerName: passenger ? passenger.name : 'Passenger',
-          passengerPhoto: passenger ? passenger.photo_url : '',
+          passengerPhoto: formatPhotoUrl(passenger ? passenger.photo_url : ''),
           passengerPhone: (showPhone && passenger) ? passenger.phone : null,
           seats: b.seats_booked,
           rideId: b.ride_id,
@@ -460,7 +460,7 @@ router.get('/driver', authenticateToken, async (req: Request, res: Response) => 
         return {
           id: row.id,
           passengerName: row.passenger_name,
-          passengerPhoto: row.passenger_photo || '',
+          passengerPhoto: formatPhotoUrl(row.passenger_photo || ''),
           passengerPhone: showPhone ? row.passenger_phone : null,
           seats: row.seats_booked,
           rideId: row.ride_id,
@@ -759,7 +759,7 @@ function formatBookingRow(row: any) {
       arrivalTime: row.arrival_time,
       pricePerSeat: row.price_per_seat,
       driverName: row.driver_name,
-      driverPhoto: row.driver_photo,
+      driverPhoto: formatPhotoUrl(row.driver_photo),
       driverRating: Number(row.driver_rating),
       driverPhone: showPhone ? row.driver_phone : null,
       vehicle: {
@@ -789,7 +789,7 @@ function hydrateBookingInMemory(b: any) {
       arrivalTime: ride.arrival_time,
       pricePerSeat: ride.price_per_seat,
       driverName: driver ? driver.name : '',
-      driverPhoto: driver ? driver.photo_url : '',
+      driverPhoto: formatPhotoUrl(driver ? driver.photo_url : ''),
       driverRating: driver ? Number(driver.rating) : 5.0,
       driverPhone: (showPhone && driver) ? driver.phone : null,
       vehicle: vehicle ? {

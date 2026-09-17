@@ -1,8 +1,136 @@
 import { Router, Request, Response } from 'express';
 import { dbQuery, isFallback, memoryDb } from '../db.js';
-import { authenticateToken } from './auth.routes.js';
+import { authenticateToken, formatPhotoUrl } from './auth.routes.js';
+import { writeFile, unlink } from 'fs/promises';
+import { join } from 'path';
 
 const router = Router();
+const UPLOADS_DIR = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
+
+// 0a. POST /api/users/me/photo (Upload or update profile photo)
+router.post('/me/photo', authenticateToken, async (req: Request, res: Response) => {
+  const decoded = (req as any).user;
+  const { photo } = req.body;
+
+  if (!photo || typeof photo !== 'string') {
+    return res.status(400).json({ error: 'Photo data is required' });
+  }
+
+  const match = photo.match(/^data:(image\/(jpeg|png|webp|gif));base64,(.+)$/);
+  if (!match) {
+    return res.status(400).json({ error: 'Invalid image format. Allowed formats: JPEG, PNG, WEBP, GIF.' });
+  }
+
+  const mimeType = match[1];
+  const extensionMap: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/gif': '.gif'
+  };
+  const ext = extensionMap[mimeType] || '.jpg';
+  const base64Data = match[3];
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  // Validate file size limit: 5 MB (5,242,880 bytes)
+  if (buffer.length > 5 * 1024 * 1024) {
+    return res.status(400).json({ error: 'Image file size exceeds maximum limit of 5 MB.' });
+  }
+
+  try {
+    const fileName = `user_${decoded.userId}_${Date.now()}${ext}`;
+    const dirPath = join(UPLOADS_DIR, 'profile-photos');
+    const filePath = join(dirPath, fileName);
+
+    await writeFile(filePath, buffer);
+    const relativePhotoUrl = `/api/uploads/profile-photos/${fileName}`;
+
+    let oldPhotoUrl: string | null = null;
+
+    if (isFallback) {
+      const user = memoryDb.users.find(u => u.id === decoded.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      oldPhotoUrl = user.photo_url || null;
+      user.photo_url = relativePhotoUrl;
+    } else {
+      const oldRes = await dbQuery('SELECT photo_url FROM users WHERE id = $1', [decoded.userId]);
+      if (oldRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+      oldPhotoUrl = oldRes.rows[0].photo_url || null;
+      await dbQuery('UPDATE users SET photo_url = $1 WHERE id = $2', [relativePhotoUrl, decoded.userId]);
+    }
+
+    // Helper to resolve physical file path from photo URL
+    const getUploadFilePath = (url: string | null): string | null => {
+      if (!url) return null;
+      const match = url.match(/(?:\/api)?\/uploads\/profile-photos\/([^/?#]+)$/);
+      return match ? join(UPLOADS_DIR, 'profile-photos', match[1]) : null;
+    };
+
+    // Remove previous local photo file if it exists
+    const oldFilePath = getUploadFilePath(oldPhotoUrl);
+    if (oldFilePath) {
+      try {
+        await unlink(oldFilePath);
+      } catch (e) {
+        // Ignore missing old file
+      }
+    }
+
+    return res.json({
+      success: true,
+      photoUrl: relativePhotoUrl,
+      message: 'Profile photo updated successfully'
+    });
+  } catch (err: any) {
+    console.error('Upload Photo Error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 0b. DELETE /api/users/me/photo (Remove profile photo)
+router.delete('/me/photo', authenticateToken, async (req: Request, res: Response) => {
+  const decoded = (req as any).user;
+
+  try {
+    let oldPhotoUrl: string | null = null;
+
+    if (isFallback) {
+      const user = memoryDb.users.find(u => u.id === decoded.userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      oldPhotoUrl = user.photo_url || null;
+      user.photo_url = null;
+    } else {
+      const oldRes = await dbQuery('SELECT photo_url FROM users WHERE id = $1', [decoded.userId]);
+      if (oldRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+      oldPhotoUrl = oldRes.rows[0].photo_url || null;
+      await dbQuery('UPDATE users SET photo_url = NULL WHERE id = $1', [decoded.userId]);
+    }
+
+    const getUploadFilePath = (url: string | null): string | null => {
+      if (!url) return null;
+      const match = url.match(/(?:\/api)?\/uploads\/profile-photos\/([^/?#]+)$/);
+      return match ? join(UPLOADS_DIR, 'profile-photos', match[1]) : null;
+    };
+
+    const oldFilePath = getUploadFilePath(oldPhotoUrl);
+    if (oldFilePath) {
+      try {
+        await unlink(oldFilePath);
+      } catch (e) {
+        // Ignore missing file
+      }
+    }
+
+    return res.json({
+      success: true,
+      photoUrl: null,
+      message: 'Profile photo removed successfully'
+    });
+  } catch (err: any) {
+    console.error('Remove Photo Error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // 1. GET /api/users/:driverId/reviews
 router.get('/:driverId/reviews', async (req: Request, res: Response) => {
@@ -30,7 +158,7 @@ router.get('/:driverId/reviews', async (req: Request, res: Response) => {
     const responseReviews = reviews.map(r => ({
       id: r.id,
       reviewerName: r.reviewer_name,
-      reviewerPhoto: r.reviewer_photo || r.reviewer_photo_fallback || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.reviewer_name),
+      reviewerPhoto: formatPhotoUrl(r.reviewer_photo || r.reviewer_photo_fallback) || ('https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.reviewer_name)),
       rating: r.rating,
       comment: r.comment,
       createdAt: r.created_at

@@ -52,7 +52,7 @@ export class AuthStore {
           this.authService.getCurrentUser().subscribe({
             next: (user) => {
               if (user) {
-                this.currentUser.set(user);
+                this.setCurrentUser(user);
                 resolve();
               } else {
                 this.attemptRefreshOrLogoutPromise().then(() => resolve());
@@ -82,7 +82,7 @@ export class AuthStore {
             this.setToken(res.accessToken);
             this.authService.getCurrentUser().subscribe({
               next: (user) => {
-                if (user) this.currentUser.set(user);
+                if (user) this.setCurrentUser(user);
                 else this.logout();
                 resolve();
               },
@@ -105,6 +105,9 @@ export class AuthStore {
   }
 
   setCurrentUser(user: User | null) {
+    if (user && user.photoUrl && user.photoUrl.startsWith('/uploads/profile-photos/')) {
+      user = { ...user, photoUrl: '/api' + user.photoUrl };
+    }
     this.currentUser.set(user);
   }
 

@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { generalLimiter } from './middleware/rate-limiter.js';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -15,6 +15,14 @@ import userRoutes from './routes/user.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import { emailProvider } from './services/email.service.js';
 import passport from './config/passport.js';
+
+// Ensure persistent uploads directory exists
+export const UPLOADS_DIR = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
+try {
+  mkdirSync(join(UPLOADS_DIR, 'profile-photos'), { recursive: true });
+} catch (e) {
+  // Directory exists or created
+}
 
 // Validate required environment variables in production
 const requiredEnv = [
@@ -60,8 +68,10 @@ const port = process.env.PORT || 5000;
 // Enable trust proxy for correct client IP detection behind reverse proxies (Nginx / Passenger)
 app.set('trust proxy', 1);
 
-// Add security headers using Helmet
-app.use(helmet());
+// Add security headers using Helmet (allow cross-origin resources for public static media/photos)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
 // Dynamic CORS configuration
 let allowedOrigins: string[] = [];
@@ -93,8 +103,12 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(passport.initialize());
+
+// Serve static uploads (profile photos) both at /uploads and /api/uploads for flexible proxy/hosting
+app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/api/uploads', express.static(UPLOADS_DIR));
 
 // Global Rate Limiting for all API requests
 app.use('/api', generalLimiter);

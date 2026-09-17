@@ -15,6 +15,8 @@ export class UserStore {
   loading = signal<boolean>(false);
   reviewsError = signal<string | null>(null);
   submitError = signal<string | null>(null);
+  photoLoading = signal<boolean>(false);
+  photoError = signal<string | null>(null);
 
   constructor() {
     // Read initial theme preference from LocalStorage inside browser
@@ -39,6 +41,56 @@ export class UserStore {
 
   toggleDarkMode() {
     this.darkMode.update(d => !d);
+  }
+
+  uploadProfilePhoto(dataUrl: string, authStore: any): Promise<boolean> {
+    this.photoLoading.set(true);
+    this.photoError.set(null);
+    return new Promise((resolve) => {
+      this.http.post<{ success: boolean; photoUrl: string; message: string }>('/api/users/me/photo', { photo: dataUrl }).subscribe({
+        next: (res) => {
+          this.photoLoading.set(false);
+          const currentUser = authStore.currentUser();
+          if (currentUser) {
+            authStore.setCurrentUser({
+              ...currentUser,
+              photoUrl: res.photoUrl
+            });
+          }
+          resolve(true);
+        },
+        error: (err) => {
+          this.photoLoading.set(false);
+          this.photoError.set(err.error?.error || 'Failed to upload profile photo');
+          resolve(false);
+        }
+      });
+    });
+  }
+
+  removeProfilePhoto(authStore: any): Promise<boolean> {
+    this.photoLoading.set(true);
+    this.photoError.set(null);
+    return new Promise((resolve) => {
+      this.http.delete<{ success: boolean; photoUrl: null; message: string }>('/api/users/me/photo').subscribe({
+        next: (res) => {
+          this.photoLoading.set(false);
+          const currentUser = authStore.currentUser();
+          if (currentUser) {
+            authStore.setCurrentUser({
+              ...currentUser,
+              photoUrl: ''
+            });
+          }
+          resolve(true);
+        },
+        error: (err) => {
+          this.photoLoading.set(false);
+          this.photoError.set(err.error?.error || 'Failed to remove profile photo');
+          resolve(false);
+        }
+      });
+    });
   }
 
   loadReviews(driverId: string) {

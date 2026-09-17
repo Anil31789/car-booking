@@ -7,6 +7,7 @@ export interface Review {
   rating: number;
   comment: string;
   createdAt: string;
+  imageError?: boolean;
 }
 
 export interface DriverDetails {

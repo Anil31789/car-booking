@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { BookingStore } from '../../core/store/booking.store';
 import { AuthStore } from '../../core/store/auth.store';
+import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
 
 @Component({
   selector: 'app-bookings',
@@ -68,13 +69,35 @@ import { AuthStore } from '../../core/store/auth.store';
                 </div>
                 <div class="driver-summary" *ngIf="bk.ride">
                   <div class="summary-row">
+                    <img *ngIf="bk.ride.driverPhoto && !bk.ride.imageError" [src]="bk.ride.driverPhoto" (error)="bk.ride.imageError = true" [alt]="bk.ride.driverName" class="driver-avatar-mini" />
+                    <div class="driver-avatar-circle" *ngIf="!bk.ride.driverPhoto || bk.ride.imageError" [style.background-color]="getAvatarColor(bk.ride.driverName)">
+                      {{ getInitials(bk.ride.driverName) }}
+                    </div>
                     <span class="driver-lbl">Driver:</span>
                     <span class="driver-name">{{ bk.ride.driverName }}</span>
                   </div>
                   <div class="contact-details" *ngIf="bk.status === 'upcoming' || bk.status === 'completed'">
-                    <div class="summary-row">
+                    <div class="summary-row" *ngIf="bk.ride.driverPhone">
                       <span class="driver-lbl">Phone:</span>
                       <span class="driver-info">{{ bk.ride.driverPhone }}</span>
+                    </div>
+                    <div class="contact-actions-row" *ngIf="bk.ride.driverPhone">
+                      <a *ngIf="getCallUrl(bk.ride.driverPhone) as callUrl"
+                         [href]="callUrl"
+                         class="contact-action-btn call-btn"
+                         (click)="$event.stopPropagation()"
+                         title="Call Driver">
+                        <span>📞 Call</span>
+                      </a>
+                      <a *ngIf="getWhatsAppUrl(bk.ride.driverPhone, bk.ride.startLocation, bk.ride.destination) as waUrl"
+                         [href]="waUrl"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         class="contact-action-btn wa-btn"
+                         (click)="$event.stopPropagation()"
+                         title="Chat on WhatsApp">
+                        <span>💬 WhatsApp</span>
+                      </a>
                     </div>
                     <div class="summary-row" *ngIf="bk.ride.vehicle">
                       <span class="driver-lbl">Vehicle:</span>
@@ -253,6 +276,28 @@ import { AuthStore } from '../../core/store/auth.store';
       border: 1px dashed rgba(255, 255, 255, 0.08);
     }
     
+    .driver-avatar-mini {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .driver-avatar-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 750;
+      font-size: 0.65rem;
+      font-family: var(--font-primary);
+      flex-shrink: 0;
+    }
+
     .summary-row {
       display: flex;
       align-items: center;
@@ -273,6 +318,51 @@ import { AuthStore } from '../../core/store/auth.store';
     .driver-info {
       font-weight: 600;
       color: hsl(var(--text-secondary));
+    }
+
+    .contact-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 6px 0;
+      flex-wrap: wrap;
+    }
+
+    .contact-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: var(--transition-smooth);
+      cursor: pointer;
+      border: 1px solid transparent;
+
+      &.call-btn {
+        background: rgba(10, 132, 255, 0.12);
+        color: var(--color-primary);
+        border-color: rgba(10, 132, 255, 0.25);
+
+        &:hover {
+          background: rgba(10, 132, 255, 0.22);
+          transform: translateY(-1px);
+        }
+      }
+
+      &.wa-btn {
+        background: rgba(37, 211, 102, 0.14);
+        color: #15803d;
+        border-color: rgba(37, 211, 102, 0.35);
+
+        &:hover {
+          background: rgba(37, 211, 102, 0.25);
+          color: #166534;
+          transform: translateY(-1px);
+        }
+      }
     }
 
     .text-muted-small {
@@ -412,5 +502,27 @@ export class BookingsComponent implements OnInit {
 
   viewRideDetails(rideId: string) {
     this.router.navigate(['/ride', rideId]);
+  }
+
+  getInitials(name: string): string {
+    return name ? name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U';
+  }
+
+  getAvatarColor(name: string): string {
+    if (!name) return 'hsl(210, 65%, 45%)';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = Math.abs(hash) % 360;
+    return `hsl(${h}, 65%, 45%)`;
+  }
+
+  getWhatsAppUrl(phone: string | null | undefined, origin?: string, destination?: string): string | null {
+    return getWhatsAppUrl(phone, origin, destination);
+  }
+
+  getCallUrl(phone: string | null | undefined): string | null {
+    return getCallUrl(phone);
   }
 }

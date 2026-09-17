@@ -13,8 +13,9 @@ import { StarRatingComponent } from './star-rating.component';
       <!-- Card Header: Driver Meta & Price -->
       <div class="card-header">
         <div class="driver-summary">
-          <!-- Offline initials avatar -->
-          <div class="driver-avatar" [style.background-color]="getAvatarColor(ride.driverName)">
+          <!-- Driver photo avatar with fallback -->
+          <img *ngIf="ride.driverPhoto && !ride.imageError" [src]="ride.driverPhoto" (error)="ride.imageError = true" [alt]="ride.driverName" class="driver-avatar-img" />
+          <div class="driver-avatar" *ngIf="!ride.driverPhoto || ride.imageError" [style.background-color]="getAvatarColor(ride.driverName)">
             {{ getInitials(ride.driverName) }}
           </div>
           <div class="driver-info">
@@ -97,6 +98,15 @@ import { StarRatingComponent } from './star-rating.component';
       display: flex;
       align-items: center;
       gap: 12px;
+    }
+
+    .driver-avatar-img {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid var(--color-primary);
+      flex-shrink: 0;
     }
 
     .driver-avatar {

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { dbQuery, isFallback, memoryDb, pool, createNotification } from '../db.js';
-import { authenticateToken } from './auth.routes.js';
+import { authenticateToken, formatPhotoUrl } from './auth.routes.js';
 import jwt from 'jsonwebtoken';
 import { isDeparturePast } from './booking.routes.js';
 
@@ -411,27 +411,61 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     }
 
     // Step B: Save vehicle if custom/new
+    let finalVehicleId: string | null = null;
     if (vehicle) {
+      const normPlate = vehicle.numberPlate ? vehicle.numberPlate.toUpperCase().trim() : '';
       if (isFallback) {
-        const hasVeh = memoryDb.vehicles.some(v => v.number_plate === vehicle.numberPlate);
-        if (!hasVeh) {
+        const existingVeh = normPlate
+          ? memoryDb.vehicles.find(v => v.number_plate?.toUpperCase().trim() === normPlate)
+          : memoryDb.vehicles.find(v => v.id === vehicle.id);
+
+        if (existingVeh) {
+          existingVeh.model = vehicle.model || existingVeh.model;
+          existingVeh.color = vehicle.color || existingVeh.color;
+          existingVeh.type = vehicle.type || existingVeh.type;
+          finalVehicleId = existingVeh.id;
+        } else {
+          finalVehicleId = vehicle.id || `veh_${Date.now()}`;
           memoryDb.vehicles.push({
-            id: vehicle.id,
+            id: finalVehicleId,
             user_id: decoded.userId,
             model: vehicle.model,
-            number_plate: vehicle.numberPlate,
+            number_plate: normPlate,
             type: vehicle.type,
             color: vehicle.color
           });
         }
       } else {
-        await dbQuery(
-          `INSERT INTO vehicles (id, user_id, model, number_plate, type, color)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (number_plate) DO UPDATE
-           SET model = EXCLUDED.model, color = EXCLUDED.color, type = EXCLUDED.type`,
-          [vehicle.id, decoded.userId, vehicle.model, vehicle.numberPlate, vehicle.type, vehicle.color]
-        );
+        const vehIdToUse = vehicle.id || `veh_${Date.now()}`;
+        if (normPlate) {
+          const vehRes = await dbQuery(
+            `INSERT INTO vehicles (id, user_id, model, number_plate, type, color)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (number_plate) DO UPDATE
+             SET model = EXCLUDED.model, color = EXCLUDED.color, type = EXCLUDED.type
+             RETURNING id`,
+            [vehIdToUse, decoded.userId, vehicle.model, normPlate, vehicle.type, vehicle.color]
+          );
+          if (vehRes.rows && vehRes.rows.length > 0) {
+            finalVehicleId = vehRes.rows[0].id;
+          }
+        } else if (vehicle.id) {
+          const vCheck = await dbQuery('SELECT id FROM vehicles WHERE id = $1', [vehicle.id]);
+          if (vCheck.rows.length > 0) {
+            finalVehicleId = vCheck.rows[0].id;
+          }
+        }
+      }
+    } else if (rideData.vehicle_id || rideData.vehicleId) {
+      const vid = rideData.vehicle_id || rideData.vehicleId;
+      if (isFallback) {
+        const exists = memoryDb.vehicles.some(v => v.id === vid);
+        if (exists) finalVehicleId = vid;
+      } else {
+        const vCheck = await dbQuery('SELECT id FROM vehicles WHERE id = $1', [vid]);
+        if (vCheck.rows.length > 0) {
+          finalVehicleId = vCheck.rows[0].id;
+        }
       }
     }
 
@@ -449,7 +483,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         available_seats: Number(rideData.availableSeats) || 4,
         total_seats: Number(rideData.totalSeats) || 4,
         price_per_seat: Number(rideData.pricePerSeat) || 300,
-        vehicle_id: vehicle ? vehicle.id : null,
+        vehicle_id: finalVehicleId,
         about_ride: rideData.aboutRide || '',
         status: 'active'
       };
@@ -465,7 +499,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           rideId, decoded.userId, rideData.startLocation, rideData.destination, JSON.stringify(rideData.stops || []),
           rideData.departureDate, rideData.departureTime, rideData.arrivalTime || '12:00',
           Number(rideData.availableSeats) || 4, Number(rideData.totalSeats) || 4, Number(rideData.pricePerSeat) || 300,
-          vehicle ? vehicle.id : null, rideData.aboutRide || '', 'active'
+          finalVehicleId, rideData.aboutRide || '', 'active'
         ]
       );
 
@@ -566,15 +600,26 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       }
 
       // Update vehicle if new/custom
+      let finalVehicleId: string | null = ride.vehicle_id;
       const vehicle = rideData.vehicle;
       if (vehicle) {
-        const hasVeh = memoryDb.vehicles.some(v => v.number_plate === vehicle.numberPlate);
-        if (!hasVeh) {
+        const normPlate = vehicle.numberPlate ? vehicle.numberPlate.toUpperCase().trim() : '';
+        const existingVeh = normPlate
+          ? memoryDb.vehicles.find(v => v.number_plate?.toUpperCase().trim() === normPlate)
+          : memoryDb.vehicles.find(v => v.id === vehicle.id);
+
+        if (existingVeh) {
+          existingVeh.model = vehicle.model || existingVeh.model;
+          existingVeh.color = vehicle.color || existingVeh.color;
+          existingVeh.type = vehicle.type || existingVeh.type;
+          finalVehicleId = existingVeh.id;
+        } else {
+          finalVehicleId = vehicle.id || `veh_${Date.now()}`;
           memoryDb.vehicles.push({
-            id: vehicle.id,
+            id: finalVehicleId,
             user_id: decoded.userId,
             model: vehicle.model,
-            number_plate: vehicle.number_plate,
+            number_plate: normPlate,
             type: vehicle.type,
             color: vehicle.color
           });
@@ -591,7 +636,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       ride.total_seats = totalSeats;
       ride.available_seats = totalSeats - totalBookedSeats;
       ride.price_per_seat = pricePerSeat;
-      ride.vehicle_id = vehicle ? vehicle.id : ride.vehicle_id;
+      ride.vehicle_id = finalVehicleId;
       ride.about_ride = rideData.aboutRide || '';
 
       return res.json(hydrateRideInMemory(ride));
@@ -670,15 +715,29 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
           return res.status(400).json({ error: 'Stopover and arrival times must be sequential and after departure time' });
         }
 
+        let finalVehicleId: string | null = ride.vehicle_id;
         const vehicle = rideData.vehicle;
         if (vehicle) {
-          await pgClient.query(
-            `INSERT INTO vehicles (id, user_id, model, number_plate, type, color)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (number_plate) DO UPDATE
-             SET model = EXCLUDED.model, color = EXCLUDED.color, type = EXCLUDED.type`,
-            [vehicle.id, decoded.userId, vehicle.model, vehicle.numberPlate, vehicle.type, vehicle.color]
-          );
+          const normPlate = vehicle.numberPlate ? vehicle.numberPlate.toUpperCase().trim() : '';
+          const vehIdToUse = vehicle.id || `veh_${Date.now()}`;
+          if (normPlate) {
+            const vehRes = await pgClient.query(
+              `INSERT INTO vehicles (id, user_id, model, number_plate, type, color)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (number_plate) DO UPDATE
+               SET model = EXCLUDED.model, color = EXCLUDED.color, type = EXCLUDED.type
+               RETURNING id`,
+              [vehIdToUse, decoded.userId, vehicle.model, normPlate, vehicle.type, vehicle.color]
+            );
+            if (vehRes.rows && vehRes.rows.length > 0) {
+              finalVehicleId = vehRes.rows[0].id;
+            }
+          } else if (vehicle.id) {
+            const vCheck = await pgClient.query('SELECT id FROM vehicles WHERE id = $1', [vehicle.id]);
+            if (vCheck.rows.length > 0) {
+              finalVehicleId = vCheck.rows[0].id;
+            }
+          }
         }
 
         const availableSeats = totalSeats - totalBookedSeats;
@@ -693,7 +752,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
             rideData.startLocation, rideData.destination, JSON.stringify(rideData.stops || []),
             rideData.departureDate, rideData.departureTime, rideData.arrivalTime,
             totalSeats, availableSeats, pricePerSeat,
-            vehicle ? vehicle.id : ride.vehicle_id, rideData.aboutRide || '', id
+            finalVehicleId, rideData.aboutRide || '', id
           ]
         );
 
@@ -952,7 +1011,7 @@ function formatRideRow(r: any) {
     id: r.id,
     driverId: r.driver_id,
     driverName: r.driver_name,
-    driverPhoto: r.driver_photo,
+    driverPhoto: formatPhotoUrl(r.driver_photo),
     driverRating: Number(r.driver_rating),
     driverJoined: r.driver_joined,
     driverTrips: r.driver_trips,
@@ -1000,7 +1059,7 @@ function hydrateRideInMemory(r: any) {
     id: r.id,
     driverId: r.driver_id,
     driverName: driver ? driver.name : '',
-    driverPhoto: driver ? driver.photo_url : '',
+    driverPhoto: formatPhotoUrl(driver ? driver.photo_url : ''),
     driverRating: driver ? Number(driver.rating) : 5.0,
     driverJoined: driver ? formatJoinedDate(driver.created_at) : '',
     driverTrips: completedRidesCount,

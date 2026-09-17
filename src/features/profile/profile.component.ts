@@ -22,13 +22,42 @@ import { DonateDialogComponent } from './donate-dialog.component';
 
       <!-- Profile Summary Banner Card -->
       <section class="profile-summary glass-panel">
-        <div class="avatar-circle" [style.background-color]="getAvatarColor(user.name)">
-          {{ getInitials(user.name) }}
+        <div class="avatar-container">
+          <div class="avatar-circle" *ngIf="!user.photoUrl || photoImageError" [style.background-color]="getAvatarColor(user.name)">
+            {{ getInitials(user.name) }}
+          </div>
+          <img *ngIf="user.photoUrl && !photoImageError" [src]="user.photoUrl" (error)="photoImageError = true" [alt]="user.name" class="avatar-img" />
+
+          <button class="avatar-edit-btn" (click)="fileInput.click()" [disabled]="userStore.photoLoading()" title="Upload or Change Profile Photo">
+            <span class="material-icons-outlined">camera_alt</span>
+          </button>
         </div>
+
+        <input type="file" #fileInput (change)="onFileSelected($event)" accept="image/jpeg,image/png,image/webp,image/gif" style="display: none;" />
+
         <div class="profile-meta">
           <h4>{{ user.name }}</h4>
           <span class="profile-phone">{{ user.phone }}</span>
           <span class="profile-email">{{ user.email }}</span>
+
+          <div class="photo-actions">
+            <button class="btn-text upload-btn" (click)="fileInput.click()" [disabled]="userStore.photoLoading()">
+              {{ user.photoUrl ? 'Change Photo' : 'Upload Photo' }}
+            </button>
+            <button class="btn-text remove-btn" *ngIf="user.photoUrl" (click)="removePhoto()" [disabled]="userStore.photoLoading()">
+              Remove Photo
+            </button>
+          </div>
+
+          <div class="photo-status" *ngIf="userStore.photoLoading()">
+            <span class="spinner-small"></span>
+            <span>Updating photo...</span>
+          </div>
+
+          <div class="photo-error-msg" *ngIf="userStore.photoError()">
+            <span class="material-icons-outlined error-icon">error_outline</span>
+            <span>{{ userStore.photoError() }}</span>
+          </div>
         </div>
       </section>
 
@@ -295,9 +324,16 @@ import { DonateDialogComponent } from './donate-dialog.component';
       gap: 16px;
     }
 
+    .avatar-container {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+
     .avatar-circle {
-      width: 60px;
-      height: 60px;
+      width: 64px;
+      height: 64px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -308,6 +344,101 @@ import { DonateDialogComponent } from './donate-dialog.component';
       font-family: var(--font-primary);
       border: 2px solid var(--color-primary);
       box-shadow: var(--shadow-sm);
+    }
+
+    .avatar-img {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--color-primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .avatar-edit-btn {
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background-color: var(--color-primary);
+      color: #ffffff;
+      border: 2px solid hsl(var(--bg-primary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-smooth);
+
+      span {
+        font-size: 14px;
+      }
+
+      &:hover {
+        transform: scale(1.1);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    .photo-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 4px;
+
+      .btn-text {
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+
+        &.upload-btn {
+          color: var(--color-primary);
+          &:hover { text-decoration: underline; }
+        }
+
+        &.remove-btn {
+          color: var(--color-danger, #ff453a);
+          &:hover { text-decoration: underline; }
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+
+    .photo-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: hsl(var(--text-secondary));
+      margin-top: 4px;
+    }
+
+    .photo-error-msg {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      color: var(--color-danger, #ff453a);
+      font-weight: 600;
+      margin-top: 4px;
+
+      .error-icon {
+        font-size: 14px;
+      }
     }
 
     .profile-meta {
@@ -699,6 +830,80 @@ export class ProfileComponent implements OnInit {
         }
       }, 3000);
     }
+  }
+
+  photoImageError = false;
+
+  async onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    input.value = '';
+
+    // Validate size (max 5 MB)
+    if (file.size > 5 * 1024 * 1024) {
+      this.userStore.photoError.set('Image file size exceeds maximum limit of 5 MB.');
+      return;
+    }
+
+    // Validate format
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      this.userStore.photoError.set('Invalid file type. Please select a JPEG, PNG, WEBP, or GIF image.');
+      return;
+    }
+
+    try {
+      const resizedDataUrl = await this.resizeImage(file, 500, 500);
+      this.photoImageError = false;
+      await this.userStore.uploadProfilePhoto(resizedDataUrl, this.authStore);
+    } catch (err) {
+      this.userStore.photoError.set('Failed to process selected image file.');
+    }
+  }
+
+  async removePhoto() {
+    this.photoImageError = false;
+    await this.userStore.removeProfilePhoto(this.authStore);
+  }
+
+  private resizeImage(file: File, maxWidth: number, maxHeight: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e: any) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(e.target.result);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = (err) => reject(err);
+        img.src = e.target.result;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
   }
 
   // Offline initials fallback generators

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { BottomNavigationComponent } from '../shared/components/bottom-navigation.component';
@@ -35,9 +35,12 @@ import { filter } from 'rxjs/operators';
             </span>
           </button>
           
-          <!-- User avatar initials link to profile -->
-          <div class="user-avatar" *ngIf="authStore.currentUser() as user" (click)="navigateProfile()" [style.background-color]="getAvatarColor(user.name)">
-            {{ getInitials(user.name) }}
+          <!-- User avatar link to profile -->
+          <div class="user-avatar-container" *ngIf="authStore.currentUser() as user" (click)="navigateProfile()">
+            <img *ngIf="user.photoUrl && !avatarError" [src]="user.photoUrl" (error)="avatarError = true" [alt]="user.name" class="user-avatar-img" />
+            <div class="user-avatar" *ngIf="!user.photoUrl || avatarError" [style.background-color]="getAvatarColor(user.name)">
+              {{ getInitials(user.name) }}
+            </div>
           </div>
         </div>
       </div>
@@ -361,6 +364,27 @@ import { filter } from 'rxjs/operators';
       }
     }
 
+    .user-avatar-container {
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .user-avatar-img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid var(--color-primary);
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition-smooth);
+
+      &:hover {
+        transform: scale(1.05);
+      }
+    }
+
     .user-avatar {
       width: 32px;
       height: 32px;
@@ -432,7 +456,16 @@ export class MainLayoutComponent {
     }
   }
 
+  avatarError = false;
+
   constructor() {
+    effect(() => {
+      const user = this.authStore.currentUser();
+      if (user) {
+        this.avatarError = false;
+      }
+    });
+
     this.updateNavigationVisibility(this.router.url);
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
