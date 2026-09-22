@@ -1,3 +1,5 @@
+@import '@angular/cdk/overlay-prebuilt.css';
+
 /* Core Design Tokens & Theme Variables */
 :root {
   // Brand Colors
@@ -167,5 +169,39 @@ p, span, label, input, button, select, textarea {
       background-color: hsl(var(--border-light));
       box-shadow: none;
     }
+  }
+}
+
+/* Angular CDK Overlay & Modal Dialog Layering */
+.cdk-overlay-container {
+  position: fixed;
+  z-index: 1100;
+}
+
+.cdk-overlay-backdrop.cdk-overlay-dark-backdrop {
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.custom-dialog-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 90vw !important;
+
+  .mat-mdc-dialog-container,
+  .mat-dialog-container {
+    --mdc-dialog-container-color: transparent;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .mat-mdc-dialog-surface {
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
   }
 }

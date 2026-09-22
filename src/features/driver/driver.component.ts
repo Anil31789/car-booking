@@ -173,9 +173,15 @@ interface PassengerRequest {
           <div class="real-offers" *ngIf="!rideStore.loading()">
             <div class="offers-list" *ngIf="rideStore.offeredRides().length > 0; else emptyOffers">
 
-              <div class="offer-card glass-panel" *ngFor="let ride of rideStore.offeredRides()">
+              <div
+                class="offer-card glass-panel"
+                [class.new-offer-card]="isNewlyCreated(ride.id)"
+                *ngFor="let ride of rideStore.offeredRides()">
                 <div class="offer-header">
-                  <span class="offer-route">{{ ride.startLocation }} &rarr; {{ ride.destination }}</span>
+                  <div class="route-badge-wrap">
+                    <span class="offer-route">{{ ride.startLocation }} &rarr; {{ ride.destination }}</span>
+                    <span class="new-badge" *ngIf="isNewlyCreated(ride.id)">NEW</span>
+                  </div>
                   <span class="offer-price">₹{{ ride.pricePerSeat }}/seat</span>
                 </div>
 
@@ -794,6 +800,36 @@ interface PassengerRequest {
     .offer-card {
       padding: 16px;
       border-radius: var(--border-radius-sm);
+      position: relative;
+      transition: var(--transition-smooth);
+
+      &.new-offer-card {
+        border-color: rgba(var(--color-primary-rgb), 0.35);
+        background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.08) 0%, rgba(var(--color-primary-rgb), 0.02) 100%), var(--glass-bg);
+        box-shadow: 0 4px 16px rgba(var(--color-primary-rgb), 0.12);
+      }
+    }
+
+    .route-badge-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .new-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      border-radius: 4px;
+      background: rgba(var(--color-primary-rgb), 0.18);
+      color: var(--color-primary);
+      border: 1px solid rgba(var(--color-primary-rgb), 0.35);
+      line-height: 1.2;
     }
 
     .offer-header {
@@ -1156,6 +1192,11 @@ export class DriverComponent implements OnInit {
 
   activeTab: 'listings' | 'publish' = 'listings';
   confirmMarkPaidId: string | null = null;
+  newlyCreatedRideIds = new Set<string>();
+
+  isNewlyCreated(rideId: string): boolean {
+    return this.newlyCreatedRideIds.has(rideId);
+  }
 
   // Driving License prompt logic
   tempLicenseNumber = '';
@@ -1366,7 +1407,13 @@ export class DriverComponent implements OnInit {
       this.selectedVehicleId = vehicleId;
     }
 
-    const resetFormAndNavigate = () => {
+    const currentEditRideId = this.editingRideId;
+    const resetFormAndNavigate = (savedRide?: any) => {
+      const idToHighlight = savedRide?.id || currentEditRideId;
+      if (idToHighlight) {
+        this.newlyCreatedRideIds.add(idToHighlight);
+      }
+
       // Clear forms
       this.from = '';
       this.to = '';

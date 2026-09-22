@@ -2,15 +2,17 @@ import { Component, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { RideStore } from '../../core/store/ride.store';
 import { BookingStore } from '../../core/store/booking.store';
 import { AuthStore } from '../../core/store/auth.store';
 import { Booking } from '../../core/models/booking.models';
+import { LegalDialogComponent } from '../profile/legal-dialog.component';
 
 @Component({
   selector: 'app-booking',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MatDialogModule],
   template: `
     <div class="booking-page slide-in" *ngIf="!rideStore.loading() && rideStore.activeRide() as ride; else loader">
 
@@ -143,14 +145,83 @@ import { Booking } from '../../core/models/booking.models';
           <p>{{ bookingStore.error() }}</p>
         </div>
 
-        <!-- Submit Button -->
+        <!-- Submit Button (Triggers Terms Confirmation) -->
         <button
           class="ripple-btn submit-booking-btn"
           [disabled]="selectedSeats.length !== seatsToBook || bookingStore.loading() || !authStore.currentUser()?.phone"
-          (click)="confirmBooking()">
+          (click)="openTermsModal()">
           <span class="spinner" *ngIf="bookingStore.loading()"></span>
           {{ bookingStore.loading() ? 'Reserving seat...' : 'Pay & Confirm Reservation' }}
         </button>
+      </div>
+
+      <!-- TERMS & CONDITIONS CONFIRMATION MODAL -->
+      <div class="terms-modal-backdrop fade-in" *ngIf="showTermsModal">
+        <div class="terms-modal-card glass-panel slide-in" role="dialog" aria-modal="true" aria-labelledby="termsModalTitle">
+          <div class="terms-modal-header">
+            <div class="header-icon-title">
+              <span class="material-icons-outlined modal-icon">verified_user</span>
+              <h4 id="termsModalTitle">Review Terms & Guidelines</h4>
+            </div>
+            <button type="button" class="close-btn" (click)="cancelTermsModal()" aria-label="Close dialog">
+              <span class="material-icons-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="terms-modal-body">
+            <p class="terms-intro">
+              Please review and accept HighwayPool's Terms & Conditions and Community Guidelines before confirming your ride reservation.
+            </p>
+
+            <div class="terms-links-box">
+              <button type="button" class="legal-action-link" (click)="openLegal('terms')">
+                <span class="material-icons-outlined link-icon">description</span>
+                <span class="link-label">View Terms & Conditions (July 2026)</span>
+                <span class="material-icons-outlined arrow-icon">open_in_new</span>
+              </button>
+              <button type="button" class="legal-action-link" (click)="openLegal('guidelines')">
+                <span class="material-icons-outlined link-icon">groups</span>
+                <span class="link-label">View Community Guidelines</span>
+                <span class="material-icons-outlined arrow-icon">open_in_new</span>
+              </button>
+            </div>
+
+            <div class="terms-notice-card">
+              <span class="material-icons-outlined notice-icon">info</span>
+              <p>
+                HighwayPool is a peer-to-peer ride matching network. Payments are settled directly with your driver via Cash or UPI. Safety verification, punctuality, and mutual respect are strictly enforced.
+              </p>
+            </div>
+
+            <label class="terms-checkbox-label" for="termsCheckbox">
+              <input
+                type="checkbox"
+                id="termsCheckbox"
+                [(ngModel)]="termsAccepted"
+                class="custom-checkbox" />
+              <span class="checkbox-text">
+                I have read and agree to the Terms & Conditions and Community Guidelines.
+              </span>
+            </label>
+          </div>
+
+          <div class="terms-modal-footer">
+            <button
+              type="button"
+              class="ripple-btn btn-secondary cancel-btn"
+              (click)="cancelTermsModal()">
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="ripple-btn submit-booking-btn agree-btn"
+              [disabled]="!termsAccepted || bookingStore.loading()"
+              (click)="agreeAndConfirmBooking()">
+              <span class="spinner" *ngIf="bookingStore.loading()"></span>
+              {{ bookingStore.loading() ? 'Reserving...' : 'Agree & Book' }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- SUCCESS TICKET CONFIRMATION SCREEN -->
@@ -691,6 +762,214 @@ import { Booking } from '../../core/models/booking.models';
         margin: 0;
       }
     }
+
+    /* Terms & Conditions Confirmation Modal */
+    .terms-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .terms-modal-card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .terms-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid hsl(var(--border-light));
+
+      .header-icon-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        .modal-icon {
+          font-size: 24px;
+          color: var(--color-primary);
+        }
+
+        h4 {
+          margin: 0;
+          font-size: 1.15rem;
+          font-weight: 800;
+          color: hsl(var(--text-primary));
+        }
+      }
+
+      .close-btn {
+        background: none;
+        border: none;
+        color: hsl(var(--text-secondary));
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        border-radius: 50%;
+        transition: var(--transition-smooth);
+
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.1);
+          color: hsl(var(--text-primary));
+        }
+      }
+    }
+
+    .terms-modal-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 60vh;
+      overflow-y: auto;
+
+      .terms-intro {
+        margin: 0;
+        font-size: 0.86rem;
+        color: hsl(var(--text-secondary));
+        line-height: 1.5;
+      }
+
+      .terms-links-box {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .legal-action-link {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: var(--border-radius-sm);
+        background: rgba(10, 132, 255, 0.08);
+        border: 1px solid rgba(10, 132, 255, 0.22);
+        color: var(--color-primary);
+        font-size: 0.84rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+        gap: 10px;
+
+        .link-icon {
+          font-size: 20px;
+          flex-shrink: 0;
+        }
+
+        .link-label {
+          flex: 1;
+          text-align: left;
+        }
+
+        .arrow-icon {
+          font-size: 16px;
+          opacity: 0.8;
+          flex-shrink: 0;
+        }
+
+        &:hover {
+          background: rgba(10, 132, 255, 0.16);
+          border-color: var(--color-primary);
+          transform: translateY(-1px);
+        }
+      }
+
+      .terms-notice-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px;
+        border-radius: var(--border-radius-sm);
+        background: rgba(255, 159, 10, 0.08);
+        border: 1px solid rgba(255, 159, 10, 0.25);
+
+        .notice-icon {
+          color: #ff9f0a;
+          font-size: 20px;
+          margin-top: 1px;
+          flex-shrink: 0;
+        }
+
+        p {
+          margin: 0;
+          font-size: 0.78rem;
+          color: hsl(var(--text-secondary));
+          line-height: 1.4;
+        }
+      }
+
+      .terms-checkbox-label {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        cursor: pointer;
+        padding: 8px 4px;
+        user-select: none;
+
+        .custom-checkbox {
+          width: 20px;
+          height: 20px;
+          border-radius: 4px;
+          cursor: pointer;
+          accent-color: var(--color-primary);
+          margin-top: 2px;
+          flex-shrink: 0;
+        }
+
+        .checkbox-text {
+          font-size: 0.84rem;
+          color: hsl(var(--text-primary));
+          line-height: 1.4;
+
+          strong {
+            color: var(--color-primary);
+          }
+        }
+      }
+    }
+
+    .terms-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-top: 1px solid hsl(var(--border-light));
+      background: rgba(0, 0, 0, 0.12);
+
+      .cancel-btn {
+        padding: 10px 18px;
+        font-size: 0.85rem;
+      }
+
+      .agree-btn {
+        margin-top: 0;
+        width: auto;
+        padding: 10px 22px;
+        font-size: 0.88rem;
+      }
+    }
   `]
 })
 export class BookingComponent implements OnInit {
@@ -699,6 +978,7 @@ export class BookingComponent implements OnInit {
   authStore = inject(AuthStore);
   private route = inject(ActivatedRoute);
   router = inject(Router);
+  private dialog = inject(MatDialog);
 
   seatsToBook = 1;
   selectedSeats: number[] = [];
@@ -706,6 +986,9 @@ export class BookingComponent implements OnInit {
 
   bookingSuccess = false;
   activeBooking: Booking | null = null;
+
+  showTermsModal = false;
+  termsAccepted = false;
 
   constructor() {
     effect(() => {
@@ -766,6 +1049,30 @@ export class BookingComponent implements OnInit {
     }
   }
 
+  openTermsModal() {
+    this.showTermsModal = true;
+    this.termsAccepted = false;
+  }
+
+  cancelTermsModal() {
+    this.showTermsModal = false;
+    this.termsAccepted = false;
+  }
+
+  openLegal(type: 'terms' | 'guidelines' = 'terms') {
+    this.dialog.open(LegalDialogComponent, {
+      data: { type },
+      width: '90%',
+      maxWidth: '480px',
+      panelClass: 'custom-dialog-panel'
+    });
+  }
+
+  agreeAndConfirmBooking() {
+    if (!this.termsAccepted) return;
+    this.confirmBooking();
+  }
+
   confirmBooking() {
     const ride = this.rideStore.activeRide();
     if (!ride) return;
@@ -774,12 +1081,16 @@ export class BookingComponent implements OnInit {
       rideId: ride.id,
       seatsBooked: this.seatsToBook,
       paymentMethod: this.paymentMethod as any,
-      selectedSeats: this.selectedSeats
+      selectedSeats: this.selectedSeats,
+      termsAccepted: true,
+      termsVersion: 'July 2026',
+      termsAcceptedAt: new Date().toISOString()
     };
 
     this.bookingStore.createBooking(payload, (booking) => {
       this.activeBooking = booking;
       this.bookingSuccess = true;
+      this.showTermsModal = false;
     });
   }
 }

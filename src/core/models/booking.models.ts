@@ -14,6 +14,9 @@ export interface Booking {
   paymentMethod: 'UPI' | 'Card' | 'Wallet' | 'Cash';
   paymentStatus: 'Paid' | 'Refunded' | 'Pending';
   selectedSeats?: number[]; // list of booked seat indexes
+  termsAccepted?: boolean;
+  termsVersion?: string;
+  termsAcceptedAt?: string;
 }
 
 export interface BookingSummary {

@@ -137,7 +137,10 @@ async function runSchemaDDL() {
       payment_method VARCHAR(20) CHECK (payment_method IN ('UPI', 'Card', 'Wallet', 'Cash')),
       payment_status VARCHAR(20) CHECK (payment_status IN ('Paid', 'Refunded', 'Pending')),
       selected_seats INT[] DEFAULT '{}',
-      cancelled_by VARCHAR(50)
+      cancelled_by VARCHAR(50),
+      terms_accepted BOOLEAN DEFAULT FALSE,
+      terms_version VARCHAR(50),
+      terms_accepted_at VARCHAR(50)
     );
 
     CREATE TABLE IF NOT EXISTS reviews (
@@ -228,6 +231,22 @@ async function runSchemaDDL() {
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='selected_seats') THEN
           ALTER TABLE bookings ADD COLUMN selected_seats INT[] DEFAULT '{}';
+        END IF;
+      END $$;
+    `);
+
+    // 5. Add terms acceptance columns if they don't exist
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='terms_accepted') THEN
+          ALTER TABLE bookings ADD COLUMN terms_accepted BOOLEAN DEFAULT FALSE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='terms_version') THEN
+          ALTER TABLE bookings ADD COLUMN terms_version VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='terms_accepted_at') THEN
+          ALTER TABLE bookings ADD COLUMN terms_accepted_at VARCHAR(50);
         END IF;
       END $$;
     `);

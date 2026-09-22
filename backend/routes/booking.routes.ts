@@ -90,11 +90,19 @@ router.get('/user/:passengerId', authenticateToken, async (req: Request, res: Re
 // 2. POST /api/bookings (Book a Ride)
 router.post('/', authenticateToken, async (req: Request, res: Response) => {
   const decoded = (req as any).user;
-  const { rideId, seatsBooked, paymentMethod, selectedSeats } = req.body;
+  const { rideId, seatsBooked, paymentMethod, selectedSeats, termsAccepted, termsVersion } = req.body;
 
   if (!rideId || !seatsBooked) {
     return res.status(400).json({ error: 'Ride ID and seats booked count are required' });
   }
+
+  // Backend Terms & Conditions acceptance validation
+  if (termsAccepted !== true) {
+    return res.status(400).json({ error: 'You must read and agree to the Terms & Conditions and Community Guidelines before booking.' });
+  }
+
+  const acceptedVersion = termsVersion || 'July 2026';
+  const acceptedAt = new Date().toISOString();
 
   const seats = Number(seatsBooked);
   if (isNaN(seats) || seats <= 0) {
@@ -157,7 +165,10 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         booking_date: todayStr,
         payment_method: paymentMethod || 'UPI',
         payment_status: 'Pending',
-        selected_seats: selectedSeats || []
+        selected_seats: selectedSeats || [],
+        terms_accepted: true,
+        terms_version: acceptedVersion,
+        terms_accepted_at: acceptedAt
       };
 
       memoryDb.bookings.unshift(newBooking);
@@ -235,9 +246,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
 
         // Insert Booking
         await pgClient.query(
-          `INSERT INTO bookings (id, ride_id, passenger_id, seats_booked, total_price, status, booking_date, payment_method, payment_status, selected_seats)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [bookingId, rideId, decoded.userId, seats, price, 'pending', todayStr, paymentMethod || 'UPI', 'Pending', selectedSeats || []]
+          `INSERT INTO bookings (id, ride_id, passenger_id, seats_booked, total_price, status, booking_date, payment_method, payment_status, selected_seats, terms_accepted, terms_version, terms_accepted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [bookingId, rideId, decoded.userId, seats, price, 'pending', todayStr, paymentMethod || 'UPI', 'Pending', selectedSeats || [], true, acceptedVersion, acceptedAt]
         );
 
         await pgClient.query('COMMIT');
@@ -750,6 +761,9 @@ function formatBookingRow(row: any) {
     paymentStatus: row.payment_status,
     selectedSeats: row.selected_seats || [],
     cancelledBy: row.cancelled_by,
+    termsAccepted: Boolean(row.terms_accepted),
+    termsVersion: row.terms_version || null,
+    termsAcceptedAt: row.terms_accepted_at || null,
     ride: {
       id: row.ride_id,
       startLocation: row.start_location,
@@ -813,6 +827,9 @@ function hydrateBookingInMemory(b: any) {
     paymentStatus: b.payment_status,
     selectedSeats: b.selected_seats || [],
     cancelledBy: b.cancelled_by,
+    termsAccepted: Boolean(b.terms_accepted),
+    termsVersion: b.terms_version || null,
+    termsAcceptedAt: b.terms_accepted_at || null,
     ride: hydratedRide
   };
 }

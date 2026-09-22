@@ -201,7 +201,9 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
       body: JSON.stringify({
         rideId: 'ride_test',
         seatsBooked: 2,
-        paymentMethod: 'Cash'
+        paymentMethod: 'Cash',
+        termsAccepted: true,
+        termsVersion: 'July 2026'
       })
     });
 
@@ -577,7 +579,9 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
       },
       body: JSON.stringify({
         rideId: 'ride_test',
-        seatsBooked: 1
+        seatsBooked: 1,
+        termsAccepted: true,
+        termsVersion: 'July 2026'
       })
     });
     assert.strictEqual(res.status, 400);
@@ -742,7 +746,9 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
       body: JSON.stringify({
         rideId: rId,
         seatsBooked: 2,
-        paymentMethod: 'UPI'
+        paymentMethod: 'UPI',
+        termsAccepted: true,
+        termsVersion: 'July 2026'
       })
     });
     assert.strictEqual(bookRes.status, 200);
@@ -779,7 +785,9 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
       body: JSON.stringify({
         rideId: rId,
         seatsBooked: 1,
-        paymentMethod: 'UPI'
+        paymentMethod: 'UPI',
+        termsAccepted: true,
+        termsVersion: 'July 2026'
       })
     });
     assert.strictEqual(failBookRes.status, 400);
@@ -812,7 +820,9 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
       body: JSON.stringify({
         rideId: rId2,
         seatsBooked: 2,
-        paymentMethod: 'UPI'
+        paymentMethod: 'UPI',
+        termsAccepted: true,
+        termsVersion: 'July 2026'
       })
     });
     const booking2 = await bookRes2.json();
@@ -1532,5 +1542,132 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
     const newRideData: any = await postNewVehRes.json();
     assert.strictEqual(newRideData.vehicle.id, 'veh_new_brand_123');
     assert.strictEqual(newRideData.vehicle.numberPlate, 'MH-14-TS-7777');
+  });
+
+  test('26. Terms & Conditions Acceptance Validation in Booking Flow', async () => {
+    // Setup driver, passenger, and active ride
+    memoryDb.users = [
+      { id: 'usr_tc_drv', name: 'Driver Rohan', email: 'driver_tc@test.com', phone: '+919876543210', rating: 5.0, reviews_count: 0 },
+      { id: 'usr_tc_pass', name: 'Passenger Priya', email: 'passenger_tc@test.com', phone: '+919123456780', rating: 5.0, reviews_count: 0 }
+    ];
+    memoryDb.vehicles = [
+      { id: 'veh_tc_1', user_id: 'usr_tc_drv', model: 'Hyundai Creta', number_plate: 'MH-14-HC-2026', type: 'SUV', color: 'White' }
+    ];
+    memoryDb.rides = [
+      {
+        id: 'ride_tc_1',
+        driver_id: 'usr_tc_drv',
+        start_location: 'Mumbai',
+        destination: 'Pune',
+        stops: [],
+        departure_date: '2026-10-15',
+        departure_time: '09:00',
+        arrival_time: '12:00',
+        available_seats: 4,
+        total_seats: 4,
+        price_per_seat: 350,
+        vehicle_id: 'veh_tc_1',
+        status: 'active'
+      }
+    ];
+    memoryDb.bookings = [];
+
+    const passToken = signToken('usr_tc_pass', 'passenger_tc@test.com');
+
+    // 1. Booking WITHOUT T&C acceptance (omitted) MUST BE REJECTED
+    const rejectNoTcRes = await fetch(`${baseUrl}/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${passToken}`
+      },
+      body: JSON.stringify({
+        rideId: 'ride_tc_1',
+        seatsBooked: 1,
+        paymentMethod: 'Cash'
+      })
+    });
+    assert.strictEqual(rejectNoTcRes.status, 400, 'Direct API booking without termsAccepted must return 400');
+    const rejectNoTcBody: any = await rejectNoTcRes.json();
+    assert.ok(
+      rejectNoTcBody.error.includes('Terms & Conditions'),
+      'Rejection error must mention Terms & Conditions'
+    );
+    assert.strictEqual(memoryDb.bookings.length, 0, 'No booking should be created when T&C is not accepted');
+
+    // 2. Booking with termsAccepted explicitly false MUST BE REJECTED
+    const rejectFalseTcRes = await fetch(`${baseUrl}/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${passToken}`
+      },
+      body: JSON.stringify({
+        rideId: 'ride_tc_1',
+        seatsBooked: 1,
+        paymentMethod: 'Cash',
+        termsAccepted: false
+      })
+    });
+    assert.strictEqual(rejectFalseTcRes.status, 400, 'Booking with termsAccepted: false must return 400');
+    assert.strictEqual(memoryDb.bookings.length, 0, 'No booking should be created when termsAccepted is false');
+
+    // 3. Booking WITH T&C ACCEPTED MUST SUCCEED
+    const successRes = await fetch(`${baseUrl}/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${passToken}`
+      },
+      body: JSON.stringify({
+        rideId: 'ride_tc_1',
+        seatsBooked: 2,
+        paymentMethod: 'UPI',
+        selectedSeats: [1, 2],
+        termsAccepted: true,
+        termsVersion: 'July 2026'
+      })
+    });
+    assert.strictEqual(successRes.status, 200, 'Booking with termsAccepted: true must return 200');
+    const createdBooking: any = await successRes.json();
+
+    // 4. Acceptance timestamp and version are stored correctly
+    assert.strictEqual(createdBooking.termsAccepted, true, 'termsAccepted must be true in returned booking');
+    assert.strictEqual(createdBooking.termsVersion, 'July 2026', 'termsVersion must match July 2026');
+    assert.ok(createdBooking.termsAcceptedAt, 'termsAcceptedAt timestamp must be present');
+    assert.ok(
+      !isNaN(Date.parse(createdBooking.termsAcceptedAt)),
+      'termsAcceptedAt must be a valid ISO date timestamp'
+    );
+
+    // Verify underlying stored booking record in database
+    const storedBooking = memoryDb.bookings.find(b => b.id === createdBooking.id);
+    assert.ok(storedBooking, 'Booking record must exist in DB');
+    assert.strictEqual(storedBooking.terms_accepted, true);
+    assert.strictEqual(storedBooking.terms_version, 'July 2026');
+    assert.strictEqual(storedBooking.terms_accepted_at, createdBooking.termsAcceptedAt);
+
+    // 5. Existing booking functionality continues to work
+    const getUserBookingsRes = await fetch(`${baseUrl}/bookings/user/usr_tc_pass`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${passToken}`
+      }
+    });
+    assert.strictEqual(getUserBookingsRes.status, 200);
+    const userBookings: any[] = await getUserBookingsRes.json();
+    assert.strictEqual(userBookings.length, 1);
+    const fetchedBooking = userBookings[0];
+    assert.strictEqual(fetchedBooking.id, createdBooking.id);
+    assert.strictEqual(fetchedBooking.seatsBooked, 2);
+    assert.strictEqual(fetchedBooking.totalPrice, 700);
+    assert.strictEqual(fetchedBooking.paymentMethod, 'UPI');
+    assert.strictEqual(fetchedBooking.status, 'pending');
+    assert.strictEqual(fetchedBooking.termsAccepted, true);
+    assert.strictEqual(fetchedBooking.termsVersion, 'July 2026');
+    assert.strictEqual(fetchedBooking.termsAcceptedAt, createdBooking.termsAcceptedAt);
+    assert.ok(fetchedBooking.ride, 'Ride details must remain properly hydrated');
+    assert.strictEqual(fetchedBooking.ride.startLocation, 'Mumbai');
+    assert.strictEqual(fetchedBooking.ride.destination, 'Pune');
   });
 });

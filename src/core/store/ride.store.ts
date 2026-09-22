@@ -82,14 +82,14 @@ export class RideStore {
     });
   }
 
-  publishRide(rideData: Partial<Ride>, onSuccess: () => void) {
+  publishRide(rideData: Partial<Ride>, onSuccess: (newRide?: Ride) => void) {
     this.loading.set(true);
     this.error.set(null);
     this.rideService.createRide(rideData).subscribe({
       next: (ride) => {
         this.offeredRides.update(list => [ride, ...list]);
         this.loading.set(false);
-        onSuccess();
+        onSuccess(ride);
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to publish ride');
@@ -113,14 +113,14 @@ export class RideStore {
     });
   }
 
-  editRide(rideId: string, rideData: Partial<Ride>, onSuccess: () => void) {
+  editRide(rideId: string, rideData: Partial<Ride>, onSuccess: (updatedRide?: Ride) => void) {
     this.loading.set(true);
     this.error.set(null);
     this.rideService.updateRide(rideId, rideData).subscribe({
       next: (updatedRide) => {
         this.offeredRides.update(list => list.map(r => r.id === rideId ? updatedRide : r));
         this.loading.set(false);
-        onSuccess();
+        onSuccess(updatedRide);
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to edit ride');
