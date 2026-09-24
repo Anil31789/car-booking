@@ -15,8 +15,7 @@ import { filter } from 'rxjs/operators';
     <header class="app-header glass-panel">
       <div class="header-container">
         <div class="app-logo" (click)="navigateHome()">
-          <span class="material-icons-outlined brand-icon">directions_car</span>
-          <span class="brand-name">CoRide</span>
+        <img src="logo.png" alt="" style="height: 50px;">
         </div>
         
         <div class="header-actions">
@@ -448,7 +447,7 @@ export class MainLayoutComponent {
   handleNotificationClick(notif: any) {
     this.notificationStore.markAsRead(notif.id);
     this.showNotifications.set(false);
-    
+
     if (notif.type === 'booking_request') {
       this.router.navigate(['/driver']);
     } else {
