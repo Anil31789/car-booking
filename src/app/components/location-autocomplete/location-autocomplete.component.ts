@@ -1,11 +1,9 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChanges, ElementRef, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CITIES_DATA, City } from '../../../core/data/cities.data';
 
-export interface City {
-  name: string;
-  state: string;
-}
+export type { City } from '../../../core/data/cities.data';
 
 @Component({
   selector: 'app-location-autocomplete',
@@ -190,41 +188,8 @@ export class LocationAutocompleteComponent implements OnInit, OnChanges {
   filteredCities: City[] = [];
   activeIndex = -1;
 
-  // Comprehensive database of major Indian cities + intermediate carpooling hubs
-  private citiesList: City[] = [
-    { name: 'Mumbai', state: 'Maharashtra' },
-    { name: 'Pune', state: 'Maharashtra' },
-    { name: 'Nagpur', state: 'Maharashtra' },
-    { name: 'Nashik', state: 'Maharashtra' },
-    { name: 'Aurangabad', state: 'Maharashtra' },
-    { name: 'Thane', state: 'Maharashtra' },
-    { name: 'Navi Mumbai', state: 'Maharashtra' },
-    { name: 'Lonavala', state: 'Maharashtra' },
-    { name: 'Amravati', state: 'Maharashtra' },
-    { name: 'Jalna', state: 'Maharashtra' },
-    { name: 'Ahmednagar', state: 'Maharashtra' },
-    { name: 'Kalyan', state: 'Maharashtra' },
-    { name: 'Bangalore', state: 'Karnataka' },
-    { name: 'Hyderabad', state: 'Telangana' },
-    { name: 'Chennai', state: 'Tamil Nadu' },
-    { name: 'Coimbatore', state: 'Tamil Nadu' },
-    { name: 'Delhi', state: 'Delhi' },
-    { name: 'Kolkata', state: 'West Bengal' },
-    { name: 'Ahmedabad', state: 'Gujarat' },
-    { name: 'Surat', state: 'Gujarat' },
-    { name: 'Bhopal', state: 'Madhya Pradesh' },
-    { name: 'Indore', state: 'Madhya Pradesh' },
-    { name: 'Jaipur', state: 'Rajasthan' },
-    { name: 'Lucknow', state: 'Uttar Pradesh' },
-    { name: 'Kanpur', state: 'Uttar Pradesh' },
-    { name: 'Patna', state: 'Bihar' },
-    { name: 'Kochi', state: 'Kerala' },
-    { name: 'Kurnool', state: 'Andhra Pradesh' },
-    { name: 'Anantapur', state: 'Andhra Pradesh' },
-    { name: 'Visakhapatnam', state: 'Andhra Pradesh' },
-    { name: 'Chandigarh', state: 'Punjab' },
-    { name: 'Dehradun', state: 'Uttarakhand' }
-  ];
+  // Reusable local Indian cities dataset
+  private citiesList: City[] = CITIES_DATA;
 
   private elementRef = inject(ElementRef);
 

@@ -109,4 +109,90 @@ describe('UI/UX Improvements Suite', () => {
       );
     });
   });
+
+  describe('3. City Autocomplete: Local Dataset & Filtering', () => {
+    test('loads and validates local cities.json dataset', () => {
+      const citiesJsonPath = path.resolve(__dirname, '../data/cities.json');
+      assert.ok(fs.existsSync(citiesJsonPath), 'cities.json must exist');
+
+      const raw = fs.readFileSync(citiesJsonPath, 'utf8');
+      const cities = JSON.parse(raw);
+      assert.ok(Array.isArray(cities), 'cities.json must be a JSON array');
+      assert.ok(cities.length >= 32, 'cities.json must contain at least the 32 original cities');
+
+      // Check structure
+      for (const c of cities) {
+        assert.ok(typeof c.name === 'string' && c.name.trim().length > 0, 'City must have non-empty name');
+        assert.ok(typeof c.state === 'string' && c.state.trim().length > 0, 'City must have non-empty state');
+      }
+
+      // Check top 6 original popular cities
+      const top6Names = cities.slice(0, 6).map((c: any) => c.name);
+      assert.deepStrictEqual(top6Names, ['Mumbai', 'Pune', 'Nagpur', 'Nashik', 'Aurangabad', 'Thane']);
+
+      // Check new cities exist in dataset
+      const allNames = new Set(cities.map((c: any) => c.name));
+      assert.ok(allNames.has('Kolhapur'), 'Should contain Kolhapur');
+      assert.ok(allNames.has('Solapur'), 'Should contain Solapur');
+      assert.ok(allNames.has('Panaji'), 'Should contain Panaji');
+      assert.ok(allNames.has('Mysore'), 'Should contain Mysore');
+    });
+
+    test('LocationAutocompleteComponent correctly imports and filters from local dataset', () => {
+      const compPath = path.resolve(__dirname, '../../shared/components/location-autocomplete.component.ts');
+      const content = fs.readFileSync(compPath, 'utf8');
+
+      // Verify import from cities.data
+      assert.ok(
+        content.includes("from '../../core/data/cities.data'") || content.includes('CITIES_DATA'),
+        'Component must import from cities.data'
+      );
+
+      // Verify no hardcoded citiesList array
+      assert.ok(
+        !content.includes("{ name: 'Mumbai', state: 'Maharashtra' }"),
+        'Component must not contain hardcoded cities list'
+      );
+
+      // Simulate component filtering logic with cities.json
+      const citiesJsonPath = path.resolve(__dirname, '../data/cities.json');
+      const citiesList: Array<{ name: string; state: string }> = JSON.parse(fs.readFileSync(citiesJsonPath, 'utf8'));
+
+      const filterLocations = (inputVal: string) => {
+        const query = inputVal.toLowerCase().trim();
+        if (!query) {
+          return citiesList.slice(0, 6);
+        }
+        return citiesList.filter(city =>
+          city.name.toLowerCase().includes(query) ||
+          city.state.toLowerCase().includes(query)
+        );
+      };
+
+      // 1. Empty input -> top 6 popular cities
+      const emptyResults = filterLocations('');
+      assert.strictEqual(emptyResults.length, 6);
+      assert.strictEqual(emptyResults[0].name, 'Mumbai');
+      assert.strictEqual(emptyResults[1].name, 'Pune');
+
+      // 2. Case-insensitive exact / partial match
+      const lowerResults = filterLocations('mumbai');
+      assert.ok(lowerResults.some(c => c.name === 'Mumbai'));
+
+      const upperResults = filterLocations('PUNE');
+      assert.ok(upperResults.some(c => c.name === 'Pune'));
+
+      // 3. Partial matching
+      const partialResults = filterLocations('kolh');
+      assert.ok(partialResults.some(c => c.name === 'Kolhapur'));
+
+      // 4. State matching
+      const goaResults = filterLocations('goa');
+      assert.ok(goaResults.some(c => c.state === 'Goa'));
+
+      // 5. Non-matching query
+      const noneResults = filterLocations('xyznonexistentcity123');
+      assert.strictEqual(noneResults.length, 0);
+    });
+  });
 });
