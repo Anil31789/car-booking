@@ -27,8 +27,10 @@ export interface User {
   photoUrl: string;
   isMobileVerified: boolean;
   isEmailVerified: boolean;
+  isLicenseVerified?: boolean;
   licensePlaceholder?: string; // Verification code
   createdAt: string;
+  tripsCount?: number;
   driverDetails?: DriverDetails;
   registeredVehicles?: Vehicle[];
 }

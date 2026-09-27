@@ -1,3 +1,5 @@
+import { Review } from './user.models';
+
 export interface Stop {
   name: string;
   arrivalTime: string;
@@ -11,16 +13,28 @@ export interface Vehicle {
   color: string;
 }
 
+export interface ConfirmedPassenger {
+  name: string;
+  photoUrl: string | null;
+  seatsBooked: number;
+  imageError?: boolean;
+}
+
 export interface Ride {
   id: string;
   driverId: string;
   driverName: string;
   driverPhoto: string;
   driverRating: number;
+  driverRatingCount?: number;
   driverJoined: string;
   driverTrips: number;
+  driverCancellations?: number;
   driverPhone: string;
   isDriverVerified: boolean;
+  isLicenseVerified?: boolean;
+  isPhoneVerified?: boolean;
+  isEmailVerified?: boolean;
   startLocation: string;
   destination: string;
   stops: Stop[];
@@ -34,6 +48,13 @@ export interface Ride {
   aboutRide?: string;
   imageError?: boolean; // dynamic fallback helper
   occupiedSeats?: number[]; // list of occupied seat indexes
+  confirmedPassengers?: ConfirmedPassenger[];
+  status?: 'active' | 'cancelled' | 'completed';
+  cancellationReason?: string;
+  cancellationComment?: string;
+  cancelledAt?: string;
+  completedAt?: string;
+  reviews?: Review[];
 }
 
 export interface SearchQuery {

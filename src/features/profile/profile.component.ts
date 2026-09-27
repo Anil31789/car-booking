@@ -40,6 +40,17 @@ import { DonateDialogComponent } from './donate-dialog.component';
           <span class="profile-phone">{{ user.phone }}</span>
           <span class="profile-email">{{ user.email }}</span>
 
+          <div class="user-trust-stats">
+            <span class="user-stat-badge" *ngIf="user.createdAt">
+              <span class="material-icons-outlined">event</span>
+              <span>Member since {{ user.createdAt | date:'MMM yyyy' }}</span>
+            </span>
+            <span class="user-stat-badge">
+              <span class="material-icons-outlined">directions_car</span>
+              <span>{{ (user.tripsCount !== undefined ? user.tripsCount : user.driverDetails?.tripsCount) || 0 }} completed {{ ((user.tripsCount !== undefined ? user.tripsCount : user.driverDetails?.tripsCount) || 0) === 1 ? 'trip' : 'trips' }}</span>
+            </span>
+          </div>
+
           <div class="photo-actions">
             <button class="btn-text upload-btn" (click)="fileInput.click()" [disabled]="userStore.photoLoading()">
               {{ user.photoUrl ? 'Change Photo' : 'Upload Photo' }}
@@ -57,6 +68,57 @@ import { DonateDialogComponent } from './donate-dialog.component';
           <div class="photo-error-msg" *ngIf="userStore.photoError()">
             <span class="material-icons-outlined error-icon">error_outline</span>
             <span>{{ userStore.photoError() }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Verification Status Section -->
+      <section class="profile-section glass-panel">
+        <h4 class="section-title">Verification Status</h4>
+        <div class="verification-list">
+          <div class="verification-row">
+            <div class="v-left">
+              <span class="material-icons-outlined v-icon" [class.verified]="user.isMobileVerified">
+                {{ user.isMobileVerified ? 'verified' : 'hourglass_empty' }}
+              </span>
+              <div class="v-details">
+                <span class="v-title">Phone Number</span>
+                <span class="v-sub">{{ user.phone || 'No phone number added' }}</span>
+              </div>
+            </div>
+            <span class="v-pill" [class.pill-success]="user.isMobileVerified">
+              {{ user.isMobileVerified ? 'Verified' : 'Pending' }}
+            </span>
+          </div>
+
+          <div class="verification-row">
+            <div class="v-left">
+              <span class="material-icons-outlined v-icon" [class.verified]="user.isEmailVerified">
+                {{ user.isEmailVerified ? 'verified' : 'hourglass_empty' }}
+              </span>
+              <div class="v-details">
+                <span class="v-title">Email Address</span>
+                <span class="v-sub">{{ user.email || 'No email added' }}</span>
+              </div>
+            </div>
+            <span class="v-pill" [class.pill-success]="user.isEmailVerified">
+              {{ user.isEmailVerified ? 'Verified' : 'Pending' }}
+            </span>
+          </div>
+
+          <div class="verification-row">
+            <div class="v-left">
+              <span class="material-icons-outlined v-icon" [class.verified]="user.isLicenseVerified || user.driverDetails?.isLicenseVerified">
+                {{ (user.isLicenseVerified || user.driverDetails?.isLicenseVerified) ? 'verified' : 'hourglass_empty' }}
+              </span>
+              <div class="v-details">
+                <span class="v-title">Driving License</span>
+                <span class="v-sub">{{ (user.isLicenseVerified || user.driverDetails?.isLicenseVerified) ? (user.licensePlaceholder || user.driverDetails?.licenseNumber || 'License verified') : 'Not verified yet' }}</span>
+              </div>
+            </div>
+            <span class="v-pill" [class.pill-success]="user.isLicenseVerified || user.driverDetails?.isLicenseVerified">
+              {{ (user.isLicenseVerified || user.driverDetails?.isLicenseVerified) ? 'Verified' : 'Not Verified' }}
+            </span>
           </div>
         </div>
       </section>
@@ -449,6 +511,100 @@ import { DonateDialogComponent } from './donate-dialog.component';
       h4 { font-size: 1.05rem; font-weight: 850; }
       .profile-phone { font-size: 0.82rem; color: hsl(var(--text-secondary)); font-weight: 600; }
       .profile-email { font-size: 0.72rem; color: hsl(var(--text-tertiary)); font-weight: 500; }
+    }
+
+    .user-trust-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+
+    .user-stat-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: hsl(var(--text-secondary));
+      background-color: hsl(var(--bg-secondary));
+      border: 1px solid hsl(var(--border-light));
+      padding: 2px 7px;
+      border-radius: var(--border-radius-sm);
+
+      span.material-icons-outlined {
+        font-size: 13px;
+        color: var(--color-primary);
+      }
+    }
+
+    /* Verification Status Checklist */
+    .verification-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .verification-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background-color: hsl(var(--bg-secondary));
+      border: 1px solid hsl(var(--border-light));
+      border-radius: var(--border-radius-sm);
+    }
+
+    .v-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .v-icon {
+      font-size: 22px;
+      color: hsl(var(--text-tertiary));
+
+      &.verified {
+        color: var(--color-secondary);
+      }
+    }
+
+    .v-details {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .v-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: hsl(var(--text-primary));
+    }
+
+    .v-sub {
+      font-size: 0.72rem;
+      color: hsl(var(--text-secondary));
+    }
+
+    .v-pill {
+      font-size: 0.68rem;
+      font-weight: 750;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background-color: hsl(var(--bg-tertiary));
+      color: hsl(var(--text-tertiary));
+      border: 1px solid hsl(var(--border-light));
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+
+      &.pill-success {
+        background-color: rgba(52, 199, 89, 0.12);
+        color: var(--color-secondary);
+        border-color: rgba(52, 199, 89, 0.25);
+      }
     }
 
     /* Common layout section */

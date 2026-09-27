@@ -8,6 +8,7 @@ import { AuthStore } from '../../core/store/auth.store';
 import { BookingStore } from '../../core/store/booking.store';
 import { StarRatingComponent } from '../../shared/components/star-rating.component';
 import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
+import { Review } from '../../core/models/user.models';
 
 @Component({
   selector: 'app-ride-details',
@@ -44,8 +45,26 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
             </div>
             <div class="driver-info">
               <h4>{{ ride.driverName }}</h4>
-              <span class="driver-joined">Member since {{ ride.driverJoined }} &bull; {{ ride.driverTrips }} {{ ride.driverTrips === 1 ? 'trip' : 'trips' }} completed</span>
-              <app-star-rating [rating]="ride.driverRating"></app-star-rating>
+              <div class="driver-rating-row">
+                <app-star-rating [rating]="ride.driverRating" [ratingCount]="ride.driverRatingCount"></app-star-rating>
+              </div>
+              <span class="driver-joined">
+                Member since {{ ride.driverJoined }} &bull; {{ ride.driverTrips }} {{ ride.driverTrips === 1 ? 'trip' : 'trips' }} completed<ng-container *ngIf="ride.driverCancellations !== undefined && ride.driverCancellations !== null"> &bull; {{ ride.driverCancellations }} {{ ride.driverCancellations === 1 ? 'cancellation' : 'cancellations' }}</ng-container>
+              </span>
+              <div class="driver-verifications-row" *ngIf="ride.isLicenseVerified || ride.isPhoneVerified || ride.isEmailVerified">
+                <span class="verify-badge-pill" *ngIf="ride.isLicenseVerified">
+                  <span class="material-icons-outlined">verified_user</span>
+                  <span>License Verified</span>
+                </span>
+                <span class="verify-badge-pill" *ngIf="ride.isPhoneVerified">
+                  <span class="material-icons-outlined">phone_android</span>
+                  <span>Phone Verified</span>
+                </span>
+                <span class="verify-badge-pill" *ngIf="ride.isEmailVerified">
+                  <span class="material-icons-outlined">mark_email_read</span>
+                  <span>Email Verified</span>
+                </span>
+              </div>
             </div>
           </div>
           <div class="driver-contact-box" *ngIf="ride.driverPhone">
@@ -122,6 +141,26 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
           </p>
         </section>
 
+        <!-- Confirmed Co-passengers -->
+        <section class="co-passengers-section glass-panel">
+          <h4 class="section-title">Co-passengers</h4>
+          <div class="co-passengers-list" *ngIf="ride.confirmedPassengers && ride.confirmedPassengers.length > 0; else noPassengers">
+            <div class="co-passenger-item" *ngFor="let p of ride.confirmedPassengers">
+              <img *ngIf="p.photoUrl && !p.imageError" [src]="p.photoUrl" (error)="p.imageError = true" [alt]="p.name" class="passenger-avatar-img" />
+              <div class="passenger-avatar" *ngIf="!p.photoUrl || p.imageError" [style.background-color]="getAvatarColor(p.name)">
+                {{ getInitials(p.name) }}
+              </div>
+              <div class="passenger-details">
+                <span class="passenger-name">{{ getFirstName(p.name) }}</span>
+                <span class="passenger-seats">{{ p.seatsBooked }} {{ p.seatsBooked === 1 ? 'seat' : 'seats' }} booked</span>
+              </div>
+            </div>
+          </div>
+          <ng-template #noPassengers>
+            <p class="no-passengers-msg">No confirmed co-passengers yet. Be the first to join!</p>
+          </ng-template>
+        </section>
+
         <!-- Reviews list -->
         <section class="reviews-section glass-panel">
           <div class="reviews-header-row">
@@ -143,19 +182,19 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
           </div>
 
           <!-- Spinner inside section -->
-          <div class="reviews-loading-inline animate-fade-in" *ngIf="userStore.loading() && userStore.reviews().length === 0">
+          <div class="reviews-loading-inline animate-fade-in" *ngIf="userStore.loading() && displayReviews.length === 0">
             <span class="spinner-small"></span>
             <span>Loading reviews...</span>
           </div>
 
           <!-- Error Alert for reviews loading -->
-          <div class="reviews-error-alert animate-fade-in" *ngIf="userStore.reviewsError() && userStore.reviews().length === 0">
+          <div class="reviews-error-alert animate-fade-in" *ngIf="userStore.reviewsError() && displayReviews.length === 0">
             <span class="material-icons-outlined error-icon">error_outline</span>
             <span>{{ userStore.reviewsError() }}</span>
           </div>
           
-          <div class="reviews-carousel" *ngIf="userStore.reviews().length > 0; else noReviews">
-            <div class="review-card slide-in" *ngFor="let rev of userStore.reviews()">
+          <div class="reviews-carousel" *ngIf="displayReviews.length > 0; else noReviews">
+            <div class="review-card slide-in" *ngFor="let rev of displayReviews">
               <div class="rev-header">
                 <img *ngIf="rev.reviewerPhoto && !rev.imageError" [src]="rev.reviewerPhoto" (error)="rev.imageError = true" [alt]="rev.reviewerName" class="rev-avatar-img" />
                 <div class="rev-avatar" *ngIf="!rev.reviewerPhoto || rev.imageError" [style.background-color]="getAvatarColor(rev.reviewerName)">
@@ -183,13 +222,16 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
           <span class="footer-price-val">₹{{ ride.pricePerSeat }}</span>
           <span class="footer-price-lbl">per seat</span>
         </div>
-        <button 
-          class="ripple-btn book-btn" 
-          [class.disabled-btn]="ride.availableSeats === 0"
-          [disabled]="ride.availableSeats === 0"
-          (click)="bookRide(ride.id)">
-          {{ ride.availableSeats === 0 ? 'Fully Booked' : 'Book Seats' }}
-        </button>
+        <div class="footer-action">
+          <button 
+            class="ripple-btn book-btn" 
+            [class.disabled-btn]="ride.availableSeats === 0"
+            [disabled]="ride.availableSeats === 0"
+            (click)="bookRide(ride.id)">
+            {{ ride.availableSeats === 0 ? 'Fully Booked' : 'Request to Book' }}
+          </button>
+          <span class="approval-note">Driver approval required</span>
+        </div>
       </footer>
 
       <!-- Premium Glassmorphic Rate Driver Modal Sheet -->
@@ -391,13 +433,44 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
     .driver-info {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 4px;
+    }
+
+    .driver-rating-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .driver-joined {
       font-size: 0.72rem;
       color: hsl(var(--text-secondary));
       font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .driver-verifications-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .verify-badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background-color: rgba(var(--color-primary-rgb), 0.12);
+      color: var(--color-primary);
+      border: 1px solid rgba(var(--color-primary-rgb), 0.25);
+
+      span.material-icons-outlined {
+        font-size: 13px;
+      }
     }
 
     .driver-contact-box {
@@ -585,6 +658,80 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
       border-radius: 8px;
     }
 
+    /* Co-passengers section */
+    .co-passengers-section {
+      padding: 18px;
+    }
+
+    .co-passengers-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .co-passenger-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid hsl(var(--border-light));
+
+      &:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+    }
+
+    .passenger-avatar-img {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid var(--color-primary);
+      flex-shrink: 0;
+    }
+
+    .passenger-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 0.9rem;
+      font-family: var(--font-primary);
+      border: 1.5px solid var(--color-primary);
+      flex-shrink: 0;
+    }
+
+    .passenger-details {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+    }
+
+    .passenger-name {
+      font-size: 0.85rem;
+      font-weight: 750;
+      color: hsl(var(--text-primary));
+    }
+
+    .passenger-seats {
+      font-size: 0.72rem;
+      color: hsl(var(--text-secondary));
+      font-weight: 500;
+    }
+
+    .no-passengers-msg {
+      font-size: 0.8rem;
+      color: hsl(var(--text-secondary));
+      font-style: italic;
+      margin: 4px 0 0 0;
+    }
+
     /* Reviews section */
     .reviews-section {
       padding: 18px;
@@ -756,6 +903,20 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
       color: hsl(var(--text-tertiary));
       text-transform: uppercase;
       letter-spacing: 0.3px;
+    }
+
+    .footer-action {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .approval-note {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: hsl(var(--text-secondary));
+      letter-spacing: 0.2px;
     }
 
     .book-btn {
@@ -1012,10 +1173,20 @@ export class RideDetailsComponent implements OnInit {
   hoverRating = 0;
   reviewComment = '';
 
+  get displayReviews(): Review[] {
+    const storeReviews = this.userStore.reviews();
+    if (storeReviews && storeReviews.length > 0) return storeReviews;
+    const rideReviews = this.rideStore.activeRide()?.reviews;
+    return rideReviews || [];
+  }
+
   constructor() {
     effect(() => {
       const ride = this.rideStore.activeRide();
       if (ride) {
+        if (ride.reviews && ride.reviews.length > 0 && this.userStore.reviews().length === 0) {
+          this.userStore.reviews.set(ride.reviews);
+        }
         this.userStore.loadReviews(ride.driverId);
       }
     });
@@ -1094,6 +1265,7 @@ export class RideDetailsComponent implements OnInit {
         () => {
           // Reload the active ride details to update the average rating on the UI
           this.rideStore.loadRideDetails(ride.id);
+          this.userStore.loadReviews(ride.driverId);
           this.closeReviewModal();
         }
       );
@@ -1135,5 +1307,10 @@ export class RideDetailsComponent implements OnInit {
 
   getCallUrl(phone: string | null | undefined): string | null {
     return getCallUrl(phone);
+  }
+
+  getFirstName(fullName: string): string {
+    if (!fullName) return 'Passenger';
+    return fullName.trim().split(' ')[0];
   }
 }

@@ -4,11 +4,12 @@ import { Router } from '@angular/router';
 import { BookingStore } from '../../core/store/booking.store';
 import { AuthStore } from '../../core/store/auth.store';
 import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
+import { CancellationModalComponent } from '../../shared/components/cancellation-modal.component';
 
 @Component({
   selector: 'app-bookings',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CancellationModalComponent],
   template: `
     <div class="bookings-page slide-in">
       <header class="page-header">
@@ -114,15 +115,20 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
                     </div>
                   </div>
                 </div>
+
+                <!-- Cancellation Reason in History/Cancelled Tab -->
+                <div class="cancellation-reason-row" *ngIf="bk.status === 'cancelled' && bk.cancellationReason">
+                  <span class="material-icons-outlined icon-mini" style="font-size: 14px;">info</span>
+                  <span>Reason: <strong>{{ bk.cancellationReason }}</strong></span>
+                </div>
               </div>
 
               <!-- Cancellation Actions -->
               <div class="bk-actions" *ngIf="bk.status === 'upcoming'">
                 <button 
                   class="ripple-btn btn-secondary cancel-booking-btn" 
-                  [class.confirm-cancel-btn]="confirmCancelBookingId === bk.id"
-                  (click)="cancelReservation(bk.id); $event.stopPropagation()">
-                  {{ confirmCancelBookingId === bk.id ? 'Confirm Cancel?' : 'Cancel Booking' }}
+                  (click)="openCancelModal(bk.id); $event.stopPropagation()">
+                  Cancel Booking
                 </button>
               </div>
             </div>
@@ -141,6 +147,17 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
           </ng-template>
         </div>
       </div>
+
+      <!-- Passenger Cancellation Modal -->
+      <app-cancellation-modal
+        [isOpen]="showCancelModal"
+        role="passenger"
+        title="Cancel Ride Booking"
+        subtitle="Please select why you need to cancel this booking:"
+        [loading]="cancellingLoading"
+        (confirm)="handleConfirmCancellation($event)"
+        (close)="closeCancelModal()">
+      </app-cancellation-modal>
 
     </div>
   `,
@@ -400,19 +417,24 @@ import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
       font-size: 0.75rem;
       color: var(--color-danger);
       background-color: rgba(255, 69, 58, 0.05);
-      border: none;
+      border: 1px solid rgba(255, 69, 58, 0.2);
       
       &:hover {
-        background-color: rgba(255, 69, 58, 0.1);
+        background-color: rgba(255, 69, 58, 0.15);
       }
     }
 
-    .confirm-cancel-btn {
-      background-color: var(--color-danger) !important;
-      color: white !important;
-      &:hover {
-        background-color: var(--color-danger) !important;
-      }
+    .cancellation-reason-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.76rem;
+      color: var(--color-danger);
+      background: rgba(255, 69, 58, 0.08);
+      border: 1px solid rgba(255, 69, 58, 0.2);
+      border-radius: var(--border-radius-xs, 4px);
+      padding: 6px 10px;
+      margin-top: 6px;
     }
 
     /* Empty state bookings */
@@ -471,7 +493,9 @@ export class BookingsComponent implements OnInit {
   }
 
   activeTab: 'upcoming' | 'completed' | 'cancelled' = 'upcoming';
-  confirmCancelBookingId: string | null = null;
+  showCancelModal = false;
+  cancellingBookingId: string | null = null;
+  cancellingLoading = false;
 
   ngOnInit() {
     const user = this.authStore.currentUser();
@@ -486,18 +510,28 @@ export class BookingsComponent implements OnInit {
     return this.bookingStore.cancelledBookings();
   }
 
-  cancelReservation(id: string) {
-    if (this.confirmCancelBookingId === id) {
-      this.bookingStore.cancelBooking(id);
-      this.confirmCancelBookingId = null;
-    } else {
-      this.confirmCancelBookingId = id;
-      setTimeout(() => {
-        if (this.confirmCancelBookingId === id) {
-          this.confirmCancelBookingId = null;
-        }
-      }, 3000);
-    }
+  openCancelModal(id: string) {
+    this.cancellingBookingId = id;
+    this.showCancelModal = true;
+  }
+
+  closeCancelModal() {
+    this.showCancelModal = false;
+    this.cancellingBookingId = null;
+    this.cancellingLoading = false;
+  }
+
+  handleConfirmCancellation(event: { reason: string; comment?: string }) {
+    if (!this.cancellingBookingId) return;
+    this.cancellingLoading = true;
+    this.bookingStore.cancelBooking(
+      this.cancellingBookingId,
+      event.reason,
+      event.comment,
+      () => {
+        this.closeCancelModal();
+      }
+    );
   }
 
   viewRideDetails(rideId: string) {

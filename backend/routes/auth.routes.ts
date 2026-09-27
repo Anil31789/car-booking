@@ -691,6 +691,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
       photoUrl: formatPhotoUrl(user.photo_url),
       isMobileVerified: user.is_mobile_verified,
       isEmailVerified: user.is_email_verified,
+      isLicenseVerified: !!user.is_license_verified,
       licensePlaceholder: user.license_placeholder || user.license_number,
       createdAt: user.created_at,
       tripsCount: stats.tripsCount,

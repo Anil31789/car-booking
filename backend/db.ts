@@ -123,7 +123,11 @@ async function runSchemaDDL() {
       price_per_seat INT NOT NULL,
       vehicle_id VARCHAR(100) REFERENCES vehicles(id) ON DELETE SET NULL,
       about_ride TEXT,
-      status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'completed'))
+      status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'completed')),
+      cancellation_reason VARCHAR(100),
+      cancellation_comment TEXT,
+      cancelled_at TIMESTAMP,
+      completed_at TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS bookings (
@@ -140,7 +144,11 @@ async function runSchemaDDL() {
       cancelled_by VARCHAR(50),
       terms_accepted BOOLEAN DEFAULT FALSE,
       terms_version VARCHAR(50),
-      terms_accepted_at VARCHAR(50)
+      terms_accepted_at VARCHAR(50),
+      cancellation_reason VARCHAR(100),
+      cancellation_comment TEXT,
+      cancelled_at TIMESTAMP,
+      completed_at TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS reviews (
@@ -287,6 +295,38 @@ async function runSchemaDDL() {
 
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='password_reset_expiry') THEN
           ALTER TABLE users ADD COLUMN password_reset_expiry TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+
+    // 6. Add cancellation reason, comment, cancelled_at, and completed_at columns to rides and bookings
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rides' AND column_name='cancellation_reason') THEN
+          ALTER TABLE rides ADD COLUMN cancellation_reason VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rides' AND column_name='cancellation_comment') THEN
+          ALTER TABLE rides ADD COLUMN cancellation_comment TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rides' AND column_name='cancelled_at') THEN
+          ALTER TABLE rides ADD COLUMN cancelled_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rides' AND column_name='completed_at') THEN
+          ALTER TABLE rides ADD COLUMN completed_at TIMESTAMP;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='cancellation_reason') THEN
+          ALTER TABLE bookings ADD COLUMN cancellation_reason VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='cancellation_comment') THEN
+          ALTER TABLE bookings ADD COLUMN cancellation_comment TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='cancelled_at') THEN
+          ALTER TABLE bookings ADD COLUMN cancelled_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bookings' AND column_name='completed_at') THEN
+          ALTER TABLE bookings ADD COLUMN completed_at TIMESTAMP;
         END IF;
       END $$;
     `);

@@ -50,15 +50,24 @@ export class BookingStore {
     });
   }
 
-  cancelBooking(bookingId: string) {
+  cancelBooking(bookingId: string, reason?: string, comment?: string, onSuccess?: () => void) {
     this.loading.set(true);
     this.error.set(null);
-    this.bookingService.cancelBooking(bookingId).subscribe({
+    this.bookingService.cancelBooking(bookingId, reason, comment).subscribe({
       next: () => {
         this.bookings.update(list => 
-          list.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const, paymentStatus: 'Refunded' as const, cancelledBy: 'passenger' } : b)
+          list.map(b => b.id === bookingId ? {
+            ...b,
+            status: 'cancelled' as const,
+            paymentStatus: 'Refunded' as const,
+            cancelledBy: 'passenger' as const,
+            cancellationReason: reason,
+            cancellationComment: comment,
+            cancelledAt: new Date().toISOString()
+          } : b)
         );
         this.loading.set(false);
+        if (onSuccess) onSuccess();
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to cancel booking');

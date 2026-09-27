@@ -1670,4 +1670,453 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
     assert.strictEqual(fetchedBooking.ride.startLocation, 'Mumbai');
     assert.strictEqual(fetchedBooking.ride.destination, 'Pune');
   });
+
+  test('33. Phase 1 Trust & Booking UX Improvements - Ride Details & Confirmed Passengers', async () => {
+    // 1. Setup mock driver and passengers in memoryDb
+    const testDriver = {
+      id: 'usr_trust_driver',
+      name: 'Rajesh Sharma',
+      email: 'rajesh@example.com',
+      phone: '+919876543210',
+      rating: 4.8,
+      reviews_count: 18,
+      is_license_verified: true,
+      is_mobile_verified: true,
+      is_email_verified: true,
+      license_number: 'DL-901239MH',
+      created_at: new Date('2024-01-15T00:00:00Z').toISOString()
+    };
+
+    const passConfirmed = {
+      id: 'usr_pass_confirmed',
+      name: 'Ananya Roy',
+      email: 'ananya@secret.com',
+      phone: '+919999988888',
+      photo_url: 'uploads/ananya.jpg'
+    };
+
+    const passPending = {
+      id: 'usr_pass_pending',
+      name: 'Sneha Patel',
+      email: 'sneha@secret.com',
+      phone: '+919999977777',
+      photo_url: 'uploads/sneha.jpg'
+    };
+
+    const passCancelled = {
+      id: 'usr_pass_cancelled',
+      name: 'Vikram Joshi',
+      email: 'vikram@secret.com',
+      phone: '+919999966666',
+      photo_url: 'uploads/vikram.jpg'
+    };
+
+    memoryDb.users.push(testDriver, passConfirmed, passPending, passCancelled);
+
+    const testRide = {
+      id: 'ride_trust_101',
+      driver_id: testDriver.id,
+      start_location: 'Mumbai',
+      destination: 'Pune',
+      departure_date: '2026-10-01',
+      departure_time: '08:00',
+      arrival_time: '11:30',
+      available_seats: 2,
+      total_seats: 4,
+      price_per_seat: 450,
+      stops: [],
+      status: 'active'
+    };
+
+    const cancelledDriverRide = {
+      id: 'ride_driver_cancelled_1',
+      driver_id: testDriver.id,
+      start_location: 'Mumbai',
+      destination: 'Nashik',
+      departure_date: '2026-09-01',
+      departure_time: '07:00',
+      arrival_time: '10:30',
+      available_seats: 4,
+      total_seats: 4,
+      price_per_seat: 400,
+      stops: [],
+      status: 'cancelled'
+    };
+
+    memoryDb.rides.push(testRide, cancelledDriverRide);
+
+    // Setup bookings on testRide:
+    // 1 upcoming/confirmed booking
+    // 1 pending booking (MUST NOT be exposed)
+    // 1 cancelled booking (MUST NOT be exposed)
+    memoryDb.bookings.push(
+      {
+        id: 'book_conf_1',
+        ride_id: testRide.id,
+        passenger_id: passConfirmed.id,
+        seats_booked: 2,
+        selected_seats: [1, 2],
+        status: 'upcoming',
+        booking_date: new Date('2026-09-20T10:00:00Z').toISOString()
+      },
+      {
+        id: 'book_pend_2',
+        ride_id: testRide.id,
+        passenger_id: passPending.id,
+        seats_booked: 1,
+        selected_seats: [3],
+        status: 'pending',
+        booking_date: new Date('2026-09-21T10:00:00Z').toISOString()
+      },
+      {
+        id: 'book_canc_3',
+        ride_id: testRide.id,
+        passenger_id: passCancelled.id,
+        seats_booked: 1,
+        selected_seats: [4],
+        status: 'cancelled',
+        booking_date: new Date('2026-09-22T10:00:00Z').toISOString()
+      }
+    );
+
+    // 2. Fetch ride details via GET /api/rides/:id
+    const res = await fetch(`${baseUrl}/rides/${testRide.id}`, { method: 'GET' });
+    assert.strictEqual(res.status, 200, 'GET /api/rides/:id should return 200');
+    const rideDetails: any = await res.json();
+
+    // Verify driver rating count
+    assert.strictEqual(rideDetails.driverRatingCount, 18, 'Driver rating count must match reviews_count');
+    assert.strictEqual(rideDetails.driverRating, 4.8, 'Driver rating must match 4.8');
+
+    // Verify verification badges
+    assert.strictEqual(rideDetails.isLicenseVerified, true, 'isLicenseVerified must be true');
+    assert.strictEqual(rideDetails.isPhoneVerified, true, 'isPhoneVerified must be true');
+    assert.strictEqual(rideDetails.isEmailVerified, true, 'isEmailVerified must be true');
+
+    // Verify driver cancellation count
+    assert.strictEqual(rideDetails.driverCancellations, 1, 'driverCancellations must accurately count cancelled rides');
+
+    // Verify confirmed co-passengers list
+    assert.ok(Array.isArray(rideDetails.confirmedPassengers), 'confirmedPassengers must be an array');
+    assert.strictEqual(rideDetails.confirmedPassengers.length, 1, 'Only upcoming/confirmed bookings must be returned');
+
+    const confirmedPassenger = rideDetails.confirmedPassengers[0];
+    assert.strictEqual(confirmedPassenger.name, 'Ananya Roy', 'Confirmed passenger name must be present');
+    assert.strictEqual(confirmedPassenger.seatsBooked, 2, 'Confirmed passenger seatsBooked must match');
+    assert.ok(confirmedPassenger.photoUrl, 'photoUrl must be present');
+
+    // Verify privacy: sensitive passenger info must NEVER be exposed
+    assert.strictEqual((confirmedPassenger as any).phone, undefined, 'Passenger phone number must not be exposed');
+    assert.strictEqual((confirmedPassenger as any).email, undefined, 'Passenger email must not be exposed');
+    assert.strictEqual((confirmedPassenger as any).id, undefined, 'Passenger user ID must not be exposed');
+
+    // 3. Verify /api/auth/me returns trust and verification fields
+    const driverToken = signToken(testDriver.id, testDriver.email);
+    const meRes = await fetch(`${baseUrl}/auth/me`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${driverToken}`
+      }
+    });
+    assert.strictEqual(meRes.status, 200, 'GET /api/auth/me should return 200');
+    const meData: any = await meRes.json();
+    assert.strictEqual(meData.isLicenseVerified, true, 'isLicenseVerified must be present on /me');
+    assert.strictEqual(meData.isMobileVerified, true, 'isMobileVerified must be present on /me');
+    assert.strictEqual(meData.isEmailVerified, true, 'isEmailVerified must be present on /me');
+    assert.ok(meData.createdAt, 'createdAt must be present on /me');
+    assert.strictEqual(typeof meData.tripsCount, 'number', 'tripsCount must be a number on /me');
+  });
+
+  test('34. Ride Lifecycle & Cancellation UX fixes', async () => {
+    const driverId = 'drv_lifecycle_1';
+    const passengerId = 'pass_lifecycle_1';
+    const driverEmail = 'driver_lifecycle@test.com';
+    const passEmail = 'pass_lifecycle@test.com';
+
+    const driverToken = signToken(driverId, driverEmail);
+    const passToken = signToken(passengerId, passEmail);
+
+    memoryDb.users = [
+      { id: driverId, name: 'Lifecycle Driver', email: driverEmail, phone: '+919876543210' },
+      { id: passengerId, name: 'Lifecycle Passenger', email: passEmail, phone: '+919123456780' }
+    ];
+
+    const futureDate = new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0];
+    const pastDate = '2025-01-01';
+
+    // Set up 3 rides:
+    // Ride 1: Active/Upcoming ride (future date)
+    // Ride 2: Departed/Past ride (past date)
+    // Ride 3: To-be-cancelled ride
+    const rideActive = {
+      id: 'ride_life_active',
+      driver_id: driverId,
+      start_location: 'Mumbai',
+      destination: 'Pune',
+      departure_date: futureDate,
+      departure_time: '18:00',
+      total_seats: 4,
+      available_seats: 4,
+      price_per_seat: 300,
+      status: 'active'
+    };
+
+    const rideDeparted = {
+      id: 'ride_life_departed',
+      driver_id: driverId,
+      start_location: 'Mumbai',
+      destination: 'Nashik',
+      departure_date: pastDate,
+      departure_time: '09:00',
+      total_seats: 4,
+      available_seats: 4,
+      price_per_seat: 250,
+      status: 'active'
+    };
+
+    const rideToCancel = {
+      id: 'ride_life_tocancel',
+      driver_id: driverId,
+      start_location: 'Mumbai',
+      destination: 'Nagpur',
+      departure_date: futureDate,
+      departure_time: '20:00',
+      total_seats: 3,
+      available_seats: 2,
+      price_per_seat: 800,
+      status: 'active'
+    };
+
+    memoryDb.rides = [rideActive, rideDeparted, rideToCancel];
+
+    const bookingOnCancelRide = {
+      id: 'bk_life_cancel',
+      ride_id: 'ride_life_tocancel',
+      passenger_id: passengerId,
+      seats_booked: 1,
+      total_price: 800,
+      status: 'upcoming',
+      payment_method: 'Cash',
+      payment_status: 'Pending',
+      booking_date: new Date().toISOString()
+    };
+
+    const bookingCompleted = {
+      id: 'bk_life_completed',
+      ride_id: 'ride_life_departed',
+      passenger_id: passengerId,
+      seats_booked: 1,
+      total_price: 250,
+      status: 'completed',
+      payment_method: 'UPI',
+      payment_status: 'Paid',
+      booking_date: new Date(Date.now() - 86400000 * 5).toISOString(),
+      completed_at: new Date('2025-01-01T15:00:00.000Z').toISOString()
+    };
+
+    memoryDb.bookings = [bookingOnCancelRide, bookingCompleted];
+    memoryDb.notifications = [];
+
+    // 1 & 2: Verify active offered rides filter out past/departed rides
+    const offeredRes1 = await fetch(`${baseUrl}/rides/driver/${driverId}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${driverToken}` }
+    });
+    assert.strictEqual(offeredRes1.status, 200);
+    const offeredRides1: any = await offeredRes1.json();
+    const offeredIds1 = offeredRides1.map((r: any) => r.id);
+    assert.ok(offeredIds1.includes('ride_life_active'), 'Active upcoming ride must be in offered rides');
+    assert.ok(offeredIds1.includes('ride_life_tocancel'), 'Active upcoming ride must be in offered rides');
+    assert.ok(!offeredIds1.includes('ride_life_departed'), 'Departed/completed ride must NOT be in active offered rides');
+
+    // 3 & 4: Driver cancels ride_life_tocancel with reason
+    // Verify empty reason string is rejected
+    const emptyReasonRes = await fetch(`${baseUrl}/rides/ride_life_tocancel/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ reason: '   ' })
+    });
+    assert.strictEqual(emptyReasonRes.status, 400, 'Cancellation with empty whitespace reason must be rejected');
+
+    const cancelRes = await fetch(`${baseUrl}/rides/ride_life_tocancel/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({
+        reason: 'Vehicle unavailable',
+        comment: 'Engine maintenance needed'
+      })
+    });
+    assert.strictEqual(cancelRes.status, 200, 'Driver cancellation with reason should succeed');
+    const cancelledRide = memoryDb.rides.find(r => r.id === 'ride_life_tocancel');
+    assert.strictEqual(cancelledRide?.status, 'cancelled');
+    assert.strictEqual(cancelledRide?.cancellation_reason, 'Vehicle unavailable');
+    assert.strictEqual(cancelledRide?.cancellation_comment, 'Engine maintenance needed');
+    assert.ok(cancelledRide?.cancelled_at, 'cancelled_at must be recorded');
+
+    // Verify 1: Cancelled ride does NOT appear in active offered rides
+    const offeredRes2 = await fetch(`${baseUrl}/rides/driver/${driverId}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${driverToken}` }
+    });
+    const offeredRides2: any = await offeredRes2.json();
+    const offeredIds2 = offeredRides2.map((r: any) => r.id);
+    assert.ok(!offeredIds2.includes('ride_life_tocancel'), 'Cancelled ride must NOT appear in active offered rides');
+    assert.ok(offeredIds2.includes('ride_life_active'), 'Active ride remains in offered rides');
+
+    // Verify history endpoint returns the cancelled and completed rides
+    const historyRes = await fetch(`${baseUrl}/rides/driver/${driverId}?status=history`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${driverToken}` }
+    });
+    assert.strictEqual(historyRes.status, 200);
+    const historyRides: any = await historyRes.json();
+    const historyIds = historyRides.map((r: any) => r.id);
+    assert.ok(historyIds.includes('ride_life_tocancel'), 'History must contain cancelled ride');
+    assert.ok(historyIds.includes('ride_life_departed'), 'History must contain completed/departed ride');
+
+    // Verify 4: Passenger notification contains cancellation reason
+    const passNotification = memoryDb.notifications.find(
+      (n: any) => n.user_id === passengerId && n.title.includes('Cancelled')
+    );
+    assert.ok(passNotification, 'Passenger must receive cancellation notification');
+    assert.ok(
+      passNotification.message.includes('Vehicle unavailable'),
+      'Passenger notification must contain the cancellation reason'
+    );
+
+    // Verify 5: Invalid cancellation attempts are rejected
+    // A. Re-cancelling already cancelled ride
+    const reCancelRes = await fetch(`${baseUrl}/rides/ride_life_tocancel/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ reason: 'Other' })
+    });
+    assert.strictEqual(reCancelRes.status, 400, 'Re-cancelling already cancelled ride must return 400');
+
+    // B. Cancelling departed/past ride
+    const cancelDepartedRes = await fetch(`${baseUrl}/rides/ride_life_departed/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ reason: 'Other' })
+    });
+    assert.strictEqual(cancelDepartedRes.status, 400, 'Cancelling past/departed ride must return 400');
+
+    // Passenger cancellation flow test:
+    // Create new booking for passenger on rideActive
+    const passBooking = {
+      id: 'bk_pass_cancel_test',
+      ride_id: 'ride_life_active',
+      passenger_id: passengerId,
+      seats_booked: 1,
+      total_price: 300,
+      status: 'upcoming',
+      payment_method: 'Cash',
+      payment_status: 'Pending',
+      booking_date: new Date().toISOString()
+    };
+    memoryDb.bookings.push(passBooking);
+
+    // Passenger cancels with reason
+    const passCancelRes = await fetch(`${baseUrl}/bookings/bk_pass_cancel_test/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${passToken}`
+      },
+      body: JSON.stringify({
+        reason: 'Change of plans',
+        comment: 'Schedule conflict'
+      })
+    });
+    assert.strictEqual(passCancelRes.status, 200, 'Passenger cancellation with reason should succeed');
+    const updatedPassBooking = memoryDb.bookings.find(b => b.id === 'bk_pass_cancel_test');
+    assert.strictEqual(updatedPassBooking?.status, 'cancelled');
+    assert.strictEqual(updatedPassBooking?.cancellation_reason, 'Change of plans');
+    assert.strictEqual(updatedPassBooking?.cancellation_comment, 'Schedule conflict');
+
+    // Driver notification contains passenger cancellation reason
+    const driverNotification = memoryDb.notifications.find(
+      (n: any) => n.user_id === driverId && n.title.includes('Cancelled') && n.message.includes('Change of plans')
+    );
+    assert.ok(driverNotification, 'Driver must receive notification with passenger cancellation reason');
+
+    // Re-cancelling booking must return 400
+    const passReCancelRes = await fetch(`${baseUrl}/bookings/bk_pass_cancel_test/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${passToken}`
+      },
+      body: JSON.stringify({ reason: 'Other' })
+    });
+    assert.strictEqual(passReCancelRes.status, 400, 'Re-cancelling already cancelled booking must return 400');
+
+    // Verify 6: Driver confirmed bookings returns rideDate and completedAt timestamp
+    const driverBookingsRes = await fetch(`${baseUrl}/bookings/driver`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${driverToken}` }
+    });
+    assert.strictEqual(driverBookingsRes.status, 200);
+    const driverBookingsList: any = await driverBookingsRes.json();
+    const completedBk = driverBookingsList.find((b: any) => b.id === 'bk_life_completed');
+    assert.ok(completedBk, 'Completed booking must be returned in driver bookings');
+    assert.strictEqual(completedBk.departureDate, pastDate, 'Ride departureDate must be present');
+    assert.strictEqual(completedBk.completedAt, '2025-01-01T15:00:00.000Z', 'Completed date/time must match stored completed_at timestamp');
+
+    // Verify 7: Unauthorized user cannot cancel another driver's ride
+    const unauthorizedToken = signToken('usr_intruder', 'intruder@test.com');
+    const unauthCancelRes = await fetch(`${baseUrl}/rides/ride_life_active/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${unauthorizedToken}`
+      },
+      body: JSON.stringify({ reason: 'Personal plans changed' })
+    });
+    assert.strictEqual(unauthCancelRes.status, 403, 'Unauthorized user cannot cancel another driver ride');
+
+    // Verify 8: Passenger reviews are returned in Ride Details API response (GET /api/rides/:id)
+    memoryDb.reviews.push({
+      id: 'rev_life_1',
+      driver_id: driverId,
+      reviewer_id: passengerId,
+      reviewer_name: 'Lifecycle Passenger',
+      reviewer_photo: '',
+      rating: 5,
+      comment: 'Excellent, smooth trip!',
+      created_at: new Date('2026-09-01T10:00:00Z'),
+      booking_id: 'bk_life_completed'
+    });
+
+    const rideDetailsRes = await fetch(`${baseUrl}/rides/ride_life_active`, {
+      method: 'GET'
+    });
+    assert.strictEqual(rideDetailsRes.status, 200);
+    const rideDetailsData: any = await rideDetailsRes.json();
+    assert.ok(Array.isArray(rideDetailsData.reviews), 'Ride details response must include reviews array');
+    assert.strictEqual(rideDetailsData.reviews.length, 1);
+    assert.strictEqual(rideDetailsData.reviews[0].comment, 'Excellent, smooth trip!');
+    assert.strictEqual(rideDetailsData.reviews[0].reviewerName, 'Lifecycle Passenger');
+
+    // Verify completed ride can be retrieved on GET /api/rides/:id
+    const completedRideRes = await fetch(`${baseUrl}/rides/ride_life_departed`, {
+      method: 'GET'
+    });
+    assert.strictEqual(completedRideRes.status, 200, 'Completed ride must be viewable on GET /api/rides/:id');
+    const completedRideData: any = await completedRideRes.json();
+    assert.ok(Array.isArray(completedRideData.reviews));
+    assert.strictEqual(completedRideData.reviews.length, 1);
+  });
 });

@@ -14,7 +14,9 @@ import { CommonModule } from '@angular/common';
         [class.half]="star === 'half'">
         {{ star === 'filled' ? 'star' : (star === 'half' ? 'star_half' : 'star_outline') }}
       </span>
-      <span class="rating-text" *ngIf="showText">{{ rating.toFixed(1) }}</span>
+      <span class="rating-text" *ngIf="showText">
+        {{ rating.toFixed(1) }}<ng-container *ngIf="ratingCount !== undefined && ratingCount !== null"> &bull; {{ ratingCount }} {{ ratingCount === 1 ? 'rating' : 'ratings' }}</ng-container>
+      </span>
     </div>
   `,
   styles: [`
@@ -58,6 +60,7 @@ export class StarRatingComponent {
   }
 
   @Input() showText = true;
+  @Input() ratingCount?: number;
 
   get stars(): ('filled' | 'half' | 'empty')[] {
     const r = this.rating;

@@ -10,6 +10,8 @@ import { LocationAutocompleteComponent } from '../../shared/components/location-
 import { RideService } from '../../core/services/ride.service';
 import { AuthService } from '../../core/services/auth.service';
 import { getWhatsAppUrl, getCallUrl } from '../../core/utils/phone.utils';
+import { CancellationModalComponent } from '../../shared/components/cancellation-modal.component';
+import { Ride } from '../../core/models/ride.models';
 
 interface PassengerRequest {
   id: string;
@@ -24,7 +26,7 @@ interface PassengerRequest {
 @Component({
   selector: 'app-driver',
   standalone: true,
-  imports: [CommonModule, FormsModule, LocationAutocompleteComponent],
+  imports: [CommonModule, FormsModule, LocationAutocompleteComponent, CancellationModalComponent],
   template: `
     <div class="driver-page slide-in">
 
@@ -111,6 +113,17 @@ interface PassengerRequest {
                 Route: <strong>{{ req.rideRoute }}</strong>
               </p>
 
+              <div class="req-dates-row">
+                <span class="req-date-badge">
+                  <span class="material-icons-outlined" style="font-size: 13px;">today</span>
+                  Ride: <strong>{{ req.departureDate | date:'MMM dd, yyyy' }} at {{ req.departureTime }}</strong>
+                </span>
+                <span class="req-date-badge completed-badge" *ngIf="req.completedAt">
+                  <span class="material-icons-outlined" style="font-size: 13px;">task_alt</span>
+                  Completed: <strong>{{ req.completedAt | date:'MMM dd, yyyy, h:mm a' }}</strong>
+                </span>
+              </div>
+
               <div class="req-contact-box" *ngIf="req.passengerPhone">
                 <p class="req-route-info" style="margin: 0; display: flex; align-items: center; gap: 4px;">
                   <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
@@ -158,6 +171,12 @@ interface PassengerRequest {
         <!-- Main Offers Listings list -->
         <section class="listings-section">
           <h3 class="section-title">Your Offered Rides</h3>
+
+          <!-- Cancellation Success Banner -->
+          <div class="success-banner glass-panel slide-in" *ngIf="cancellationSuccessMessage">
+            <span class="material-icons-outlined">check_circle</span>
+            <p>{{ cancellationSuccessMessage }}</p>
+          </div>
 
           <!-- Store error banner -->
           <div class="error-banner glass-panel slide-in" *ngIf="rideStore.error() || bookingStore.error()">
@@ -209,11 +228,12 @@ interface PassengerRequest {
                     Edit Ride
                   </button>
                   <button
+                    *ngIf="canCancelRide(ride)"
+                    type="button"
                     class="ripple-btn btn-secondary cancel-offer-btn"
-                    [class.confirm-cancel-btn]="confirmCancelOfferId === ride.id"
-                    (click)="cancelOffer(ride.id)"
+                    (click)="openCancelOfferModal(ride.id)"
                     style="margin-top: 0;">
-                    {{ confirmCancelOfferId === ride.id ? 'Confirm Cancel?' : 'Cancel Offer' }}
+                    Cancel Offer
                   </button>
                 </div>
               </div>
@@ -230,6 +250,41 @@ interface PassengerRequest {
                 </button>
               </div>
             </ng-template>
+          </div>
+        </section>
+
+        <!-- Ride History Panel -->
+        <section class="listings-section" *ngIf="rideStore.historicalRides().length > 0">
+          <h3 class="section-title">Ride History</h3>
+          <div class="offers-list">
+            <div
+              class="offer-card glass-panel history-card"
+              *ngFor="let ride of rideStore.historicalRides()">
+              <div class="offer-header">
+                <div class="route-badge-wrap">
+                  <span class="offer-route">{{ ride.startLocation }} &rarr; {{ ride.destination }}</span>
+                  <span 
+                    class="history-status-pill" 
+                    [class.pill-cancelled]="ride.status === 'cancelled'"
+                    [class.pill-completed]="ride.status === 'completed' || isDeparted(ride)">
+                    {{ ride.status === 'cancelled' ? 'Cancelled' : 'Completed' }}
+                  </span>
+                </div>
+                <span class="offer-price">₹{{ ride.pricePerSeat }}/seat</span>
+              </div>
+
+              <p class="offer-time-lbl">
+                <span class="material-icons-outlined icon-mini">today</span>
+                {{ ride.departureDate | date:'MMM dd, yyyy' }} at {{ ride.departureTime }}
+              </p>
+
+              <div class="history-meta-row" *ngIf="ride.status === 'cancelled' && ride.cancellationReason">
+                <span class="cancellation-reason-lbl">
+                  <span class="material-icons-outlined icon-mini">info</span>
+                  Reason: {{ ride.cancellationReason }}
+                </span>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -529,6 +584,17 @@ interface PassengerRequest {
         </div>
       </div>
 
+      <!-- Driver Ride Cancellation Confirmation Modal -->
+      <app-cancellation-modal
+        [isOpen]="showCancelModal"
+        role="driver"
+        title="Cancel Ride Offer"
+        subtitle="Please select why you need to cancel this ride offer:"
+        [loading]="cancellingLoading"
+        (confirm)="onConfirmCancelRide($event)"
+        (close)="closeCancelModal()">
+      </app-cancellation-modal>
+
     </div>
   `,
   styles: [`
@@ -783,6 +849,74 @@ interface PassengerRequest {
     .mark-paid-btn {
       background-color: var(--color-primary) !important;
       box-shadow: 0 4px 12px rgba(10, 132, 255, 0.25) !important;
+    }
+
+    .req-dates-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 4px 0;
+    }
+
+    .req-date-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      color: hsl(var(--text-secondary));
+      background-color: hsl(var(--bg-secondary));
+      border: 1px solid hsl(var(--border-light));
+      border-radius: var(--border-radius-sm);
+      padding: 3px 8px;
+
+      &.completed-badge {
+        color: var(--color-secondary);
+        border-color: rgba(52, 199, 89, 0.3);
+        background-color: rgba(52, 199, 89, 0.08);
+      }
+    }
+
+    .history-card {
+      opacity: 0.85;
+      border-left: 3px solid hsl(var(--border-light));
+
+      &:hover {
+        opacity: 1;
+      }
+    }
+
+    .history-status-pill {
+      font-size: 0.65rem;
+      font-weight: 750;
+      padding: 2px 7px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+
+      &.pill-cancelled {
+        background-color: rgba(255, 69, 58, 0.12);
+        color: var(--color-danger, #ff453a);
+        border: 1px solid rgba(255, 69, 58, 0.25);
+      }
+
+      &.pill-completed {
+        background-color: rgba(52, 199, 89, 0.12);
+        color: var(--color-secondary);
+        border: 1px solid rgba(52, 199, 89, 0.25);
+      }
+    }
+
+    .history-meta-row {
+      margin-top: 4px;
+    }
+
+    .cancellation-reason-lbl {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      color: hsl(var(--text-secondary));
+      font-style: italic;
     }
 
     /* Offers list */
@@ -1142,6 +1276,27 @@ interface PassengerRequest {
       border-radius: var(--border-radius-sm);
       background-color: hsl(var(--bg-primary));
       border: 1px solid hsl(var(--border-light));
+    }
+
+    .success-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background-color: rgba(52, 199, 89, 0.12);
+      border: 1px solid rgba(52, 199, 89, 0.3);
+      border-radius: var(--border-radius-sm);
+      color: var(--color-secondary, #34c759);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin: 12px 0;
+
+      span {
+        font-size: 20px;
+      }
+      p {
+        margin: 0;
+      }
     }
 
     .error-banner {
@@ -1510,18 +1665,41 @@ export class DriverComponent implements OnInit {
     this.switchTab('listings');
   }
 
-  cancelOffer(rideId: string) {
-    if (this.confirmCancelOfferId === rideId) {
-      this.rideStore.cancelOfferedRide(rideId);
-      this.confirmCancelOfferId = null;
-    } else {
-      this.confirmCancelOfferId = rideId;
-      setTimeout(() => {
-        if (this.confirmCancelOfferId === rideId) {
-          this.confirmCancelOfferId = null;
-        }
-      }, 3000);
+  canCancelRide(ride: Ride): boolean {
+    if (ride.status === 'cancelled' || ride.status === 'completed') {
+      return false;
     }
+    return !this.isDeparted(ride);
+  }
+
+  showCancelModal = false;
+  cancellingRideId: string | null = null;
+  cancellingLoading = false;
+  cancellationSuccessMessage: string | null = null;
+
+  openCancelOfferModal(rideId: string) {
+    this.cancellingRideId = rideId;
+    this.showCancelModal = true;
+  }
+
+  closeCancelModal() {
+    this.cancellingRideId = null;
+    this.showCancelModal = false;
+    this.cancellingLoading = false;
+  }
+
+  onConfirmCancelRide(event: { reason: string; comment?: string }) {
+    if (!this.cancellingRideId) return;
+    const rideId = this.cancellingRideId;
+    this.cancellingLoading = true;
+    this.rideStore.cancelOfferedRide(rideId, event.reason, event.comment, () => {
+      this.cancellingLoading = false;
+      this.closeCancelModal();
+      this.cancellationSuccessMessage = 'Your ride offer has been successfully cancelled and affected passengers have been notified.';
+      setTimeout(() => {
+        this.cancellationSuccessMessage = null;
+      }, 5000);
+    });
   }
 
   // Request queue actions

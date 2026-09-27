@@ -25,12 +25,17 @@ export class RideService {
     return this.http.post<Ride>('/api/rides', rideData);
   }
 
-  getDriverRides(driverId: string): Observable<Ride[]> {
-    return this.http.get<Ride[]>(`/api/rides/driver/${driverId}`);
+  getDriverRides(driverId: string, status?: string): Observable<Ride[]> {
+    const url = status ? `/api/rides/driver/${driverId}?status=${status}` : `/api/rides/driver/${driverId}`;
+    return this.http.get<Ride[]>(url);
   }
 
-  cancelRide(id: string): Observable<boolean> {
-    return this.http.post<boolean>(`/api/rides/${id}/cancel`, {});
+  getDriverHistory(driverId: string): Observable<Ride[]> {
+    return this.http.get<Ride[]>(`/api/rides/driver/${driverId}?status=history`);
+  }
+
+  cancelRide(id: string, reason?: string, comment?: string): Observable<boolean> {
+    return this.http.post<boolean>(`/api/rides/${id}/cancel`, { reason, comment });
   }
 
   updateRideSeats(id: string, availableSeats: number): Observable<boolean> {

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { dbQuery, isFallback, memoryDb, pool, createNotification } from '../db.js';
 import { authenticateToken, formatPhotoUrl } from './auth.routes.js';
 import jwt from 'jsonwebtoken';
-import { isDeparturePast } from './booking.routes.js';
+import { isDeparturePast, autoUpdateBookingStatusesPg } from './booking.routes.js';
 
 const JWT_SECRET = process.env.NODE_ENV === 'production'
   ? process.env.JWT_SECRET!
@@ -143,7 +143,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (isFallback) {
       const found = memoryDb.rides.find(r => r.id === id);
-      if (found && (found.status === 'active' || !found.status)) {
+      if (found) {
         ride = hydrateRideInMemory(found);
         const rideBookings = memoryDb.bookings.filter(b => b.ride_id === id && b.status !== 'cancelled' && b.status !== 'cancelled_by_driver' && b.status !== 'cancelled_by_passenger');
         const occupiedSeats: number[] = [];
@@ -153,11 +153,40 @@ router.get('/:id', async (req: Request, res: Response) => {
           }
         });
         ride.occupiedSeats = occupiedSeats;
+
+        // Fetch confirmed/upcoming passengers safely without private info
+        const confirmedBookings = memoryDb.bookings.filter(b => b.ride_id === id && (b.status === 'upcoming' || b.status === 'completed'));
+        ride.confirmedPassengers = confirmedBookings.map(b => {
+          const pass = memoryDb.users.find(u => u.id === b.passenger_id);
+          return {
+            name: pass ? pass.name : 'Passenger',
+            photoUrl: pass ? formatPhotoUrl(pass.photo_url) : null,
+            seatsBooked: Number(b.seats_booked || (b.selected_seats ? b.selected_seats.length : 1))
+          };
+        });
+
+        // Fetch driver passenger reviews
+        const driverReviews = memoryDb.reviews
+          .filter(rev => rev.driver_id === found.driver_id)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .map(rev => ({
+            id: rev.id,
+            reviewerName: rev.reviewer_name,
+            reviewerPhoto: formatPhotoUrl(rev.reviewer_photo) || ('https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(rev.reviewer_name)),
+            rating: rev.rating,
+            comment: rev.comment,
+            createdAt: rev.created_at
+          }));
+        ride.reviews = driverReviews;
       }
     } else {
       const q = `
         SELECT r.*,
                u.name AS driver_name, u.photo_url AS driver_photo, u.rating AS driver_rating,
+               u.reviews_count AS driver_rating_count,
+               u.is_license_verified,
+               u.is_mobile_verified AS is_phone_verified,
+               u.is_email_verified,
                TO_CHAR(u.created_at, 'Mon YYYY') AS driver_joined,
                (
                  SELECT COALESCE(COUNT(DISTINCT r2.id), 0)
@@ -167,13 +196,19 @@ router.get('/:id', async (req: Request, res: Response) => {
                    AND r2.status != 'cancelled'
                    AND b2.status = 'completed'
                ) AS driver_trips,
+               (
+                 SELECT COALESCE(COUNT(*), 0)
+                 FROM rides r3
+                 WHERE r3.driver_id = u.id
+                   AND r3.status = 'cancelled'
+               ) AS driver_cancellations,
                u.phone AS driver_phone,
                u.is_license_verified AS is_driver_verified,
                v.model AS vehicle_model, v.number_plate AS vehicle_plate, v.type AS vehicle_type, v.color AS vehicle_color
         FROM rides r
         JOIN users u ON r.driver_id = u.id
         LEFT JOIN vehicles v ON r.vehicle_id = v.id
-        WHERE r.id = $1 AND r.status = 'active'
+        WHERE r.id = $1
       `;
       const result = await dbQuery(q, [id]);
       if (result.rows.length > 0) {
@@ -188,6 +223,39 @@ router.get('/:id', async (req: Request, res: Response) => {
           [id]
         );
         ride.occupiedSeats = occupiedRes.rows[0].occupied_seats || [];
+
+        // Fetch confirmed passengers safely without exposing sensitive phone/email
+        const passengersRes = await dbQuery(
+          `SELECT u.name, u.photo_url, b.seats_booked
+           FROM bookings b
+           JOIN users u ON b.passenger_id = u.id
+           WHERE b.ride_id = $1 AND b.status IN ('upcoming', 'completed')
+           ORDER BY b.booking_date ASC`,
+          [id]
+        );
+        ride.confirmedPassengers = passengersRes.rows.map((p: any) => ({
+          name: p.name,
+          photoUrl: formatPhotoUrl(p.photo_url),
+          seatsBooked: Number(p.seats_booked || 1)
+        }));
+
+        // Fetch driver passenger reviews
+        const reviewsRes = await dbQuery(
+          `SELECT r.*, u.photo_url AS reviewer_photo_fallback
+           FROM reviews r
+           LEFT JOIN users u ON r.reviewer_id = u.id
+           WHERE r.driver_id = $1
+           ORDER BY r.created_at DESC`,
+          [result.rows[0].driver_id]
+        );
+        ride.reviews = reviewsRes.rows.map((rev: any) => ({
+          id: rev.id,
+          reviewerName: rev.reviewer_name,
+          reviewerPhoto: formatPhotoUrl(rev.reviewer_photo || rev.reviewer_photo_fallback) || ('https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(rev.reviewer_name)),
+          rating: rev.rating,
+          comment: rev.comment,
+          createdAt: rev.created_at
+        }));
       }
     }
 
@@ -798,13 +866,38 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 // 5. GET /api/rides/driver/:driverId
 router.get('/driver/:driverId', async (req: Request, res: Response) => {
   const { driverId } = req.params;
+  const statusParam = req.query.status as string; // 'active', 'history', 'all'
 
   try {
+    await autoUpdateBookingStatusesPg();
     let list: any[] = [];
 
     if (isFallback) {
-      list = memoryDb.rides.filter(r => r.driver_id === driverId).map(r => hydrateRideInMemory(r));
+      if (statusParam === 'history') {
+        list = memoryDb.rides
+          .filter(r => r.driver_id === driverId && (r.status === 'cancelled' || r.status === 'completed' || isDeparturePast(r.departure_date, r.departure_time)))
+          .map(r => hydrateRideInMemory(r));
+      } else if (statusParam === 'all') {
+        list = memoryDb.rides
+          .filter(r => r.driver_id === driverId)
+          .map(r => hydrateRideInMemory(r));
+      } else {
+        // Default: active offered rides only (not cancelled, not completed, not departed)
+        list = memoryDb.rides
+          .filter(r => r.driver_id === driverId && (r.status === 'active' || !r.status) && !isDeparturePast(r.departure_date, r.departure_time))
+          .map(r => hydrateRideInMemory(r));
+      }
     } else {
+      let whereClause = "WHERE r.driver_id = $1";
+      if (statusParam === 'history') {
+        whereClause += " AND (r.status IN ('cancelled', 'completed') OR TO_TIMESTAMP(r.departure_date || ' ' || r.departure_time, 'YYYY-MM-DD HH24:MI') < CURRENT_TIMESTAMP)";
+      } else if (statusParam === 'all') {
+        // no additional filter
+      } else {
+        // Default: active offered rides only
+        whereClause += " AND (r.status = 'active' OR r.status IS NULL) AND TO_TIMESTAMP(r.departure_date || ' ' || r.departure_time, 'YYYY-MM-DD HH24:MI') >= CURRENT_TIMESTAMP";
+      }
+
       const q = `
         SELECT r.*,
                u.name AS driver_name, u.photo_url AS driver_photo, u.rating AS driver_rating,
@@ -823,7 +916,7 @@ router.get('/driver/:driverId', async (req: Request, res: Response) => {
         FROM rides r
         JOIN users u ON r.driver_id = u.id
         LEFT JOIN vehicles v ON r.vehicle_id = v.id
-        WHERE r.driver_id = $1
+        ${whereClause}
         ORDER BY r.departure_date DESC
       `;
       const result = await dbQuery(q, [driverId]);
@@ -850,6 +943,14 @@ router.get('/driver/:driverId', async (req: Request, res: Response) => {
 router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response) => {
   const { id } = req.params;
   const decoded = (req as any).user;
+  const { reason, comment } = req.body || {};
+
+  if (reason !== undefined && (typeof reason !== 'string' || !reason.trim())) {
+    return res.status(400).json({ error: 'Cancellation reason cannot be empty' });
+  }
+
+  const cleanReason = (reason && typeof reason === 'string' && reason.trim()) ? reason.trim() : 'Other';
+  const cleanComment = comment && typeof comment === 'string' && comment.trim() ? comment.trim() : null;
 
   try {
     if (isFallback) {
@@ -859,7 +960,19 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
         return res.status(403).json({ error: 'Unauthorized: Only the ride driver can cancel this ride' });
       }
 
+      if (ride.status === 'cancelled') {
+        return res.status(400).json({ error: 'Ride is already cancelled' });
+      }
+      if (ride.status === 'completed' || isDeparturePast(ride.departure_date, ride.departure_time)) {
+        return res.status(400).json({ error: 'Cannot cancel a completed or departed ride' });
+      }
+
+      const nowIso = new Date().toISOString();
       ride.status = 'cancelled';
+      ride.cancellation_reason = cleanReason;
+      ride.cancellation_comment = cleanComment;
+      ride.cancelled_at = nowIso;
+
       const driver = memoryDb.users.find(u => u.id === decoded.userId);
       const driverName = driver ? driver.name : 'The driver';
 
@@ -869,10 +982,13 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
           b.status = 'cancelled';
           b.payment_status = 'Refunded';
           b.cancelled_by = 'driver';
+          b.cancellation_reason = cleanReason;
+          b.cancellation_comment = cleanComment;
+          b.cancelled_at = nowIso;
           createNotification(
             b.passenger_id,
             'Ride Cancelled by Driver',
-            `The driver ${driverName} has cancelled the ride from ${ride.start_location} to ${ride.destination}.`,
+            `The driver ${driverName} has cancelled the ride from ${ride.start_location} to ${ride.destination}. Reason: ${cleanReason}.`,
             'ride_cancelled',
             b.id
           );
@@ -898,8 +1014,20 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
           return res.status(403).json({ error: 'Unauthorized: Only the ride driver can cancel this ride' });
         }
 
+        if (ride.status === 'cancelled') {
+          await pgClient.query('ROLLBACK');
+          return res.status(400).json({ error: 'Ride is already cancelled' });
+        }
+        if (ride.status === 'completed' || isDeparturePast(ride.departure_date, ride.departure_time)) {
+          await pgClient.query('ROLLBACK');
+          return res.status(400).json({ error: 'Cannot cancel a completed or departed ride' });
+        }
+
         // Update ride status to cancelled
-        await pgClient.query("UPDATE rides SET status = 'cancelled' WHERE id = $1", [id]);
+        await pgClient.query(
+          "UPDATE rides SET status = 'cancelled', cancellation_reason = $1, cancellation_comment = $2, cancelled_at = CURRENT_TIMESTAMP WHERE id = $3",
+          [cleanReason, cleanComment, id]
+        );
 
         const dRes = await pgClient.query('SELECT name FROM users WHERE id = $1', [decoded.userId]);
         const driverName = dRes.rows.length > 0 ? dRes.rows[0].name : 'The driver';
@@ -912,8 +1040,8 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
 
         // Mark all bookings as cancelled
         await pgClient.query(
-          "UPDATE bookings SET status = 'cancelled', payment_status = 'Refunded', cancelled_by = 'driver' WHERE ride_id = $1 AND status IN ('upcoming', 'pending')",
-          [id]
+          "UPDATE bookings SET status = 'cancelled', payment_status = 'Refunded', cancelled_by = 'driver', cancellation_reason = $1, cancellation_comment = $2, cancelled_at = CURRENT_TIMESTAMP WHERE ride_id = $3 AND status IN ('upcoming', 'pending')",
+          [cleanReason, cleanComment, id]
         );
 
         await pgClient.query('COMMIT');
@@ -923,7 +1051,7 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
           await createNotification(
             b.passenger_id,
             'Ride Cancelled by Driver',
-            `The driver ${driverName} has cancelled the ride from ${ride.start_location} to ${ride.destination}.`,
+            `The driver ${driverName} has cancelled the ride from ${ride.start_location} to ${ride.destination}. Reason: ${cleanReason}.`,
             'ride_cancelled',
             b.id
           );
@@ -1013,10 +1141,15 @@ function formatRideRow(r: any) {
     driverName: r.driver_name,
     driverPhoto: formatPhotoUrl(r.driver_photo),
     driverRating: Number(r.driver_rating),
+    driverRatingCount: r.driver_rating_count !== undefined ? Number(r.driver_rating_count) : (r.reviews_count !== undefined ? Number(r.reviews_count) : 0),
     driverJoined: r.driver_joined,
     driverTrips: r.driver_trips,
+    driverCancellations: r.driver_cancellations !== undefined ? Number(r.driver_cancellations) : 0,
     driverPhone: r.driver_phone,
     isDriverVerified: r.is_driver_verified,
+    isLicenseVerified: !!r.is_license_verified,
+    isPhoneVerified: !!r.is_phone_verified,
+    isEmailVerified: !!r.is_email_verified,
     startLocation: r.start_location,
     destination: r.destination,
     stops: typeof r.stops === 'string' ? JSON.parse(r.stops) : r.stops,
@@ -1034,7 +1167,13 @@ function formatRideRow(r: any) {
       color: r.vehicle_color
     },
     aboutRide: r.about_ride,
-    status: r.status
+    status: r.status,
+    cancellationReason: r.cancellation_reason || undefined,
+    cancellationComment: r.cancellation_comment || undefined,
+    cancelledAt: r.cancelled_at || undefined,
+    completedAt: r.completed_at || undefined,
+    confirmedPassengers: r.confirmedPassengers || [],
+    reviews: r.reviews || []
   };
 }
 
@@ -1055,16 +1194,22 @@ function hydrateRideInMemory(r: any) {
     const r2 = memoryDb.rides.find(ride => ride.id === rideId);
     return r2 && r2.driver_id === r.driver_id && r2.status !== 'cancelled';
   }).length;
+  const cancellationsCount = memoryDb.rides.filter(ride => ride.driver_id === r.driver_id && ride.status === 'cancelled').length;
   return {
     id: r.id,
     driverId: r.driver_id,
     driverName: driver ? driver.name : '',
     driverPhoto: formatPhotoUrl(driver ? driver.photo_url : ''),
     driverRating: driver ? Number(driver.rating) : 5.0,
+    driverRatingCount: driver ? Number(driver.reviews_count || 0) : 0,
     driverJoined: driver ? formatJoinedDate(driver.created_at) : '',
     driverTrips: completedRidesCount,
+    driverCancellations: cancellationsCount,
     driverPhone: driver ? driver.phone : '',
     isDriverVerified: driver ? driver.is_license_verified : false,
+    isLicenseVerified: driver ? !!driver.is_license_verified : false,
+    isPhoneVerified: driver ? !!driver.is_mobile_verified : false,
+    isEmailVerified: driver ? !!driver.is_email_verified : false,
     startLocation: r.start_location,
     destination: r.destination,
     stops: r.stops,
@@ -1082,7 +1227,13 @@ function hydrateRideInMemory(r: any) {
       color: vehicle.color
     } : undefined,
     aboutRide: r.about_ride,
-    status: r.status || 'active'
+    status: r.status || 'active',
+    cancellationReason: r.cancellation_reason || undefined,
+    cancellationComment: r.cancellation_comment || undefined,
+    cancelledAt: r.cancelled_at || undefined,
+    completedAt: r.completed_at || undefined,
+    confirmedPassengers: r.confirmedPassengers || [],
+    reviews: r.reviews || []
   };
 }
 

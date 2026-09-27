@@ -17,6 +17,12 @@ export interface Booking {
   termsAccepted?: boolean;
   termsVersion?: string;
   termsAcceptedAt?: string;
+  cancelledBy?: 'passenger' | 'driver';
+  cancellationReason?: string;
+  cancellationComment?: string;
+  cancelledAt?: string;
+  completedAt?: string;
+  rideDate?: string;
 }
 
 export interface BookingSummary {

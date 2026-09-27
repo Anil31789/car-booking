@@ -17,8 +17,8 @@ export class BookingService {
     return this.http.post<Booking>('/api/bookings', bookingData);
   }
 
-  cancelBooking(id: string): Observable<boolean> {
-    return this.http.post<boolean>(`/api/bookings/${id}/cancel`, {});
+  cancelBooking(id: string, reason?: string, comment?: string): Observable<boolean> {
+    return this.http.post<boolean>(`/api/bookings/${id}/cancel`, { reason, comment });
   }
 
   getDriverBookings(): Observable<any[]> {

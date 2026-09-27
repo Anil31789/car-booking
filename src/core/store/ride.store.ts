@@ -10,6 +10,7 @@ export class RideStore {
 
   rides = signal<Ride[]>([]);
   offeredRides = signal<Ride[]>([]);
+  historicalRides = signal<Ride[]>([]);
   searchQuery = signal<SearchQuery | null>(null);
   filters = signal<RideFilters>({
     sortBy: 'price_asc'
@@ -45,6 +46,15 @@ export class RideStore {
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to load offered rides');
         this.loading.set(false);
+      }
+    });
+
+    this.rideService.getDriverHistory(driverId).subscribe({
+      next: (history) => {
+        this.historicalRides.set(history);
+      },
+      error: (err) => {
+        console.error('Failed to load driver ride history:', err);
       }
     });
   }
@@ -98,13 +108,25 @@ export class RideStore {
     });
   }
 
-  cancelOfferedRide(rideId: string) {
+  cancelOfferedRide(rideId: string, reason?: string, comment?: string, onSuccess?: () => void) {
     this.loading.set(true);
     this.error.set(null);
-    this.rideService.cancelRide(rideId).subscribe({
+    this.rideService.cancelRide(rideId, reason, comment).subscribe({
       next: () => {
+        const cancelledRide = this.offeredRides().find(r => r.id === rideId);
         this.offeredRides.update(list => list.filter(r => r.id !== rideId));
+        if (cancelledRide) {
+          const updatedCancelled: Ride = {
+            ...cancelledRide,
+            status: 'cancelled',
+            cancellationReason: reason,
+            cancellationComment: comment,
+            cancelledAt: new Date().toISOString()
+          };
+          this.historicalRides.update(list => [updatedCancelled, ...list]);
+        }
         this.loading.set(false);
+        if (onSuccess) onSuccess();
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to cancel offered ride');

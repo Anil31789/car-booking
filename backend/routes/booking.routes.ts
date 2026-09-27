@@ -21,19 +21,30 @@ export function autoUpdateBookingStatusesInMemory() {
       const ride = memoryDb.rides.find(r => r.id === b.ride_id);
       if (ride && isDeparturePast(ride.departure_date, ride.departure_time)) {
         b.status = 'completed';
+        if (!b.completed_at) {
+          b.completed_at = new Date().toISOString();
+        }
+      }
+    }
+  }
+  for (const r of memoryDb.rides) {
+    if ((r.status === 'active' || !r.status) && isDeparturePast(r.departure_date, r.departure_time)) {
+      r.status = 'completed';
+      if (!r.completed_at) {
+        r.completed_at = new Date().toISOString();
       }
     }
   }
 }
 
-async function autoUpdateBookingStatusesPg() {
+export async function autoUpdateBookingStatusesPg() {
   if (isFallback) {
     autoUpdateBookingStatusesInMemory();
   } else {
     try {
-      const q = `
+      const qBookings = `
         UPDATE bookings
-        SET status = 'completed'
+        SET status = 'completed', completed_at = CURRENT_TIMESTAMP
         WHERE status = 'upcoming'
           AND id IN (
             SELECT b.id
@@ -43,7 +54,15 @@ async function autoUpdateBookingStatusesPg() {
               AND TO_TIMESTAMP(r.departure_date || ' ' || r.departure_time, 'YYYY-MM-DD HH24:MI') < CURRENT_TIMESTAMP
           )
       `;
-      await dbQuery(q);
+      await dbQuery(qBookings);
+
+      const qRides = `
+        UPDATE rides
+        SET status = 'completed', completed_at = CURRENT_TIMESTAMP
+        WHERE (status = 'active' OR status IS NULL)
+          AND TO_TIMESTAMP(departure_date || ' ' || departure_time, 'YYYY-MM-DD HH24:MI') < CURRENT_TIMESTAMP
+      `;
+      await dbQuery(qRides);
     } catch (err) {
       console.error('Error auto-updating PG booking statuses:', err);
     }
@@ -296,6 +315,14 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
 router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response) => {
   const { id } = req.params;
   const decoded = (req as any).user;
+  const { reason, comment } = req.body || {};
+
+  if (reason !== undefined && (typeof reason !== 'string' || !reason.trim())) {
+    return res.status(400).json({ error: 'Cancellation reason cannot be empty' });
+  }
+
+  const cleanReason = (reason && typeof reason === 'string' && reason.trim()) ? reason.trim() : 'Other';
+  const cleanComment = comment && typeof comment === 'string' && comment.trim() ? comment.trim() : null;
 
   try {
     if (isFallback) {
@@ -321,6 +348,9 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
       booking.status = 'cancelled';
       booking.payment_status = 'Refunded';
       booking.cancelled_by = 'passenger';
+      booking.cancellation_reason = cleanReason;
+      booking.cancellation_comment = cleanComment;
+      booking.cancelled_at = new Date().toISOString();
 
       // Restore seats ONLY if it was accepted/upcoming
       if (prevStatus === 'upcoming') {
@@ -330,7 +360,7 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
         createNotification(
           ride.driver_id,
           'Booking Cancelled by Passenger',
-          `Passenger ${passengerName} has cancelled their booking for your ride from ${ride.start_location} to ${ride.destination}.`,
+          `Passenger ${passengerName} has cancelled their booking for your ride from ${ride.start_location} to ${ride.destination}. Reason: ${cleanReason}.`,
           'booking_cancelled',
           booking.id
         );
@@ -376,10 +406,10 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
           return res.status(400).json({ error: 'Cannot cancel a completed or departed ride booking' });
         }
 
-        // Update booking status and set cancelled_by
+        // Update booking status and set cancelled_by, reason, comment, timestamp
         await pgClient.query(
-          "UPDATE bookings SET status = 'cancelled', payment_status = 'Refunded', cancelled_by = 'passenger' WHERE id = $1",
-          [id]
+          "UPDATE bookings SET status = 'cancelled', payment_status = 'Refunded', cancelled_by = 'passenger', cancellation_reason = $1, cancellation_comment = $2, cancelled_at = CURRENT_TIMESTAMP WHERE id = $3",
+          [cleanReason, cleanComment, id]
         );
 
         // Restore seats ONLY if it was accepted/upcoming
@@ -406,7 +436,7 @@ router.post('/:id/cancel', authenticateToken, async (req: Request, res: Response
           await createNotification(
             ride.driver_id,
             'Booking Cancelled by Passenger',
-            `Passenger ${passengerName} has cancelled their booking for your ride from ${ride.start_location} to ${ride.destination}.`,
+            `Passenger ${passengerName} has cancelled their booking for your ride from ${ride.start_location} to ${ride.destination}. Reason: ${cleanReason}.`,
             'booking_cancelled',
             booking.id
           );
@@ -451,7 +481,11 @@ router.get('/driver', authenticateToken, async (req: Request, res: Response) => 
           paymentMethod: b.payment_method,
           paymentStatus: b.payment_status,
           departureDate: ride.departure_date,
-          departureTime: ride.departure_time
+          departureTime: ride.departure_time,
+          rideDate: ride.departure_date,
+          completedAt: b.completed_at || null,
+          cancellationReason: b.cancellation_reason || null,
+          cancellationComment: b.cancellation_comment || null
         };
       });
       return res.json(formatted);
@@ -481,7 +515,11 @@ router.get('/driver', authenticateToken, async (req: Request, res: Response) => 
           paymentMethod: row.payment_method,
           paymentStatus: row.payment_status,
           departureDate: row.departure_date,
-          departureTime: row.departure_time
+          departureTime: row.departure_time,
+          rideDate: row.departure_date,
+          completedAt: row.completed_at || null,
+          cancellationReason: row.cancellation_reason || null,
+          cancellationComment: row.cancellation_comment || null
         };
       });
       return res.json(formatted);
@@ -761,6 +799,10 @@ function formatBookingRow(row: any) {
     paymentStatus: row.payment_status,
     selectedSeats: row.selected_seats || [],
     cancelledBy: row.cancelled_by,
+    cancellationReason: row.cancellation_reason || null,
+    cancellationComment: row.cancellation_comment || null,
+    cancelledAt: row.cancelled_at || null,
+    completedAt: row.completed_at || null,
     termsAccepted: Boolean(row.terms_accepted),
     termsVersion: row.terms_version || null,
     termsAcceptedAt: row.terms_accepted_at || null,
@@ -827,6 +869,10 @@ function hydrateBookingInMemory(b: any) {
     paymentStatus: b.payment_status,
     selectedSeats: b.selected_seats || [],
     cancelledBy: b.cancelled_by,
+    cancellationReason: b.cancellation_reason || null,
+    cancellationComment: b.cancellation_comment || null,
+    cancelledAt: b.cancelled_at || null,
+    completedAt: b.completed_at || null,
     termsAccepted: Boolean(b.terms_accepted),
     termsVersion: b.terms_version || null,
     termsAcceptedAt: b.terms_accepted_at || null,
