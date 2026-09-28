@@ -5,12 +5,22 @@ export interface Stop {
   arrivalTime: string;
 }
 
+export interface VehiclePhoto {
+  id: string;
+  photoUrl: string;
+  url?: string;
+  vehicleId?: string;
+  createdAt?: string;
+}
+
 export interface Vehicle {
   id: string;
   model: string;
   numberPlate: string;
   type: 'Sedan' | 'Hatchback' | 'SUV' | 'EV' | 'Luxury';
   color: string;
+  photos?: string[];
+  photoDetails?: VehiclePhoto[];
 }
 
 export interface ConfirmedPassenger {

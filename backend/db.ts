@@ -18,6 +18,7 @@ export function setFallback(val: boolean) {
 export let memoryDb = {
   users: [] as any[],
   vehicles: [] as any[],
+  vehiclePhotos: [] as any[],
   rides: [] as any[],
   bookings: [] as any[],
   reviews: [] as any[],
@@ -109,6 +110,13 @@ async function runSchemaDDL() {
       color VARCHAR(50) NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS vehicle_photos (
+      id VARCHAR(100) PRIMARY KEY,
+      vehicle_id VARCHAR(100) REFERENCES vehicles(id) ON DELETE CASCADE,
+      photo_url TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS rides (
       id VARCHAR(100) PRIMARY KEY,
       driver_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
@@ -181,6 +189,7 @@ async function runSchemaDDL() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON vehicles(user_id);
+    CREATE INDEX IF NOT EXISTS idx_vehicle_photos_vehicle_id ON vehicle_photos(vehicle_id);
     CREATE INDEX IF NOT EXISTS idx_rides_driver_id ON rides(driver_id);
     CREATE INDEX IF NOT EXISTS idx_rides_status ON rides(status);
     CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings(ride_id);
@@ -329,6 +338,17 @@ async function runSchemaDDL() {
           ALTER TABLE bookings ADD COLUMN completed_at TIMESTAMP;
         END IF;
       END $$;
+    `);
+
+    // 7. Ensure vehicle_photos table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_photos (
+        id VARCHAR(100) PRIMARY KEY,
+        vehicle_id VARCHAR(100) REFERENCES vehicles(id) ON DELETE CASCADE,
+        photo_url TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_vehicle_photos_vehicle_id ON vehicle_photos(vehicle_id);
     `);
   } catch (migErr) {
     console.error('Migration error (non-fatal if tables did not exist yet):', migErr);

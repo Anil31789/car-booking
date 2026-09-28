@@ -136,6 +136,28 @@ import { Review } from '../../core/models/user.models';
             </div>
             <span class="plate-badge">{{ ride.vehicle.numberPlate }}</span>
           </div>
+
+          <!-- Vehicle photos gallery (only when available) -->
+          <div class="vehicle-photos-gallery" *ngIf="ride.vehicle?.photos?.length">
+            <div class="veh-photos-header">
+              <span class="material-icons-outlined photo-badge-icon">photo_camera</span>
+              <span class="veh-photos-title">Vehicle Photos</span>
+              <span class="veh-photos-count">({{ ride.vehicle.photos?.length || 0 }})</span>
+            </div>
+            <div class="veh-photos-grid">
+              <div 
+                class="veh-photo-thumb" 
+                *ngFor="let photo of (ride.vehicle?.photos || []); let idx = index"
+                (click)="openVehiclePhotoPreview(photo)"
+                title="Click to view full photo">
+                <img [src]="photo" [alt]="ride.vehicle.model + ' photo ' + (idx + 1)" />
+                <div class="zoom-overlay">
+                  <span class="material-icons-outlined">zoom_in</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <p class="about-msg" *ngIf="ride.aboutRide">
             "{{ ride.aboutRide }}"
           </p>
@@ -299,6 +321,16 @@ import { Review } from '../../core/models/user.models';
               Submit Review
             </button>
           </form>
+        </div>
+      </div>
+
+      <!-- Vehicle Photo Lightbox Preview Modal -->
+      <div class="lightbox-backdrop fade-in" *ngIf="previewPhotoUrl" (click)="closeVehiclePhotoPreview()">
+        <div class="lightbox-modal slide-up" (click)="$event.stopPropagation()">
+          <button class="lightbox-close-btn" (click)="closeVehiclePhotoPreview()" title="Close">
+            <span class="material-icons-outlined">close</span>
+          </button>
+          <img [src]="previewPhotoUrl" alt="Vehicle Photo Enlarged" class="lightbox-img" />
         </div>
       </div>
 
@@ -656,6 +688,82 @@ import { Review } from '../../core/models/user.models';
       background-color: hsl(var(--bg-secondary));
       padding: 12px;
       border-radius: 8px;
+    }
+
+    /* Vehicle Photos Gallery in Ride Details */
+    .vehicle-photos-gallery {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid hsl(var(--border-light));
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .veh-photos-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 750;
+      color: hsl(var(--text-secondary));
+
+      .photo-badge-icon {
+        font-size: 18px;
+        color: var(--color-primary);
+      }
+
+      .veh-photos-count {
+        color: hsl(var(--text-tertiary));
+        font-size: 0.75rem;
+      }
+    }
+
+    .veh-photos-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .veh-photo-thumb {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: 8px;
+      overflow: hidden;
+      background: hsl(var(--bg-secondary));
+      border: 1px solid hsl(var(--border-light));
+      cursor: pointer;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.25s ease;
+      }
+
+      &:hover img {
+        transform: scale(1.06);
+      }
+
+      .zoom-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        color: #ffffff;
+
+        span {
+          font-size: 24px;
+        }
+      }
+
+      &:hover .zoom-overlay {
+        opacity: 1;
+      }
     }
 
     /* Co-passengers section */
@@ -1157,6 +1265,59 @@ import { Review } from '../../core/models/user.models';
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
+
+    /* Lightbox Modal */
+    .lightbox-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .lightbox-modal {
+      position: relative;
+      max-width: 90vw;
+      max-height: 85vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      img {
+        max-width: 100%;
+        max-height: 85vh;
+        object-fit: contain;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+      }
+
+      .lightbox-close-btn {
+        position: absolute;
+        top: -16px;
+        right: -16px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: rgba(30, 30, 30, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        transition: transform 0.2s ease;
+
+        &:hover {
+          transform: scale(1.1);
+        }
+      }
+    }
   `]
 })
 export class RideDetailsComponent implements OnInit {
@@ -1166,6 +1327,19 @@ export class RideDetailsComponent implements OnInit {
   bookingStore = inject(BookingStore);
   route = inject(ActivatedRoute);
   router = inject(Router);
+
+  // Vehicle photo preview lightbox
+  previewPhotoUrl: string | null = null;
+
+  openVehiclePhotoPreview(url?: string | null) {
+    if (url) {
+      this.previewPhotoUrl = url;
+    }
+  }
+
+  closeVehiclePhotoPreview() {
+    this.previewPhotoUrl = null;
+  }
 
   // Review Form parameters
   showReviewModal = false;

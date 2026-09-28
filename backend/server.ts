@@ -13,6 +13,7 @@ import rideRoutes from './routes/ride.routes.js';
 import bookingRoutes from './routes/booking.routes.js';
 import userRoutes from './routes/user.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import vehicleRoutes from './routes/vehicle.routes.js';
 import { emailProvider } from './services/email.service.js';
 import passport from './config/passport.js';
 
@@ -20,6 +21,7 @@ import passport from './config/passport.js';
 export const UPLOADS_DIR = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
 try {
   mkdirSync(join(UPLOADS_DIR, 'profile-photos'), { recursive: true });
+  mkdirSync(join(UPLOADS_DIR, 'vehicle-photos'), { recursive: true });
 } catch (e) {
   // Directory exists or created
 }
@@ -118,6 +120,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/rides', rideRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 // Comprehensive Healthcheck Endpoint

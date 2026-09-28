@@ -51,124 +51,7 @@ interface PassengerRequest {
       <!-- TAB 1: Manage Ride Listings & Passenger Requests -->
       <div class="tab-content" *ngIf="activeTab === 'listings'">
 
-        <!-- Passenger Requests / Approvals Panel -->
-        <section class="approvals-section" *ngIf="incomingRequests.length > 0">
-          <h3 class="section-title">Incoming Booking Requests</h3>
-          <div class="requests-list">
-            <div
-              *ngFor="let req of incomingRequests"
-              class="request-card glass-panel">
-
-              <div class="req-header">
-                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
-                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
-                  {{ getInitials(req.passengerName) }}
-                </div>
-                <div class="req-meta">
-                  <span class="req-name">{{ req.passengerName }}</span>
-                  <span class="req-seats">Wants {{ req.seats }} seat{{ req.seats > 1 ? 's' : '' }}</span>
-                </div>
-                <span class="req-badge">₹{{ req.totalPrice }}</span>
-              </div>
-
-              <p class="req-route-info">
-                Route: <strong>{{ req.rideRoute }}</strong>
-              </p>
-
-              <!-- Real Accept/Reject triggers -->
-              <div class="req-actions">
-                <button class="ripple-btn btn-secondary reject-btn" (click)="rejectRequest(req.id)">
-                  Reject
-                </button>
-                <button class="ripple-btn accept-btn" (click)="acceptRequest(req.id, req.rideId, req.seats)">
-                  Accept
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        <!-- Confirmed Bookings & Payments Panel -->
-        <section class="approvals-section" *ngIf="confirmedBookings.length > 0">
-          <h3 class="section-title">Confirmed Bookings & Payments</h3>
-          <div class="requests-list">
-            <div
-              *ngFor="let req of confirmedBookings"
-              class="request-card glass-panel">
-
-              <div class="req-header">
-                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
-                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
-                  {{ getInitials(req.passengerName) }}
-                </div>
-                <div class="req-meta">
-                  <span class="req-name">{{ req.passengerName }}</span>
-                  <span class="req-seats">Booked {{ req.seats }} seat{{ req.seats > 1 ? 's' : '' }}</span>
-                </div>
-                <span class="req-badge">₹{{ req.totalPrice }}</span>
-              </div>
-
-              <p class="req-route-info">
-                Route: <strong>{{ req.rideRoute }}</strong>
-              </p>
-
-              <div class="req-dates-row">
-                <span class="req-date-badge">
-                  <span class="material-icons-outlined" style="font-size: 13px;">today</span>
-                  Ride: <strong>{{ req.departureDate | date:'MMM dd, yyyy' }} at {{ req.departureTime }}</strong>
-                </span>
-                <span class="req-date-badge completed-badge" *ngIf="req.completedAt">
-                  <span class="material-icons-outlined" style="font-size: 13px;">task_alt</span>
-                  Completed: <strong>{{ req.completedAt | date:'MMM dd, yyyy, h:mm a' }}</strong>
-                </span>
-              </div>
-
-              <div class="req-contact-box" *ngIf="req.passengerPhone">
-                <p class="req-route-info" style="margin: 0; display: flex; align-items: center; gap: 4px;">
-                  <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
-                  Contact: <strong>{{ req.passengerPhone }}</strong>
-                </p>
-                <div class="contact-actions-row">
-                  <a *ngIf="getCallUrl(req.passengerPhone) as callUrl"
-                     [href]="callUrl"
-                     class="contact-action-btn call-btn"
-                     (click)="$event.stopPropagation()"
-                     title="Call Passenger">
-                    <span>📞 Call</span>
-                  </a>
-                  <a *ngIf="getWhatsAppUrl(req.passengerPhone, req.rideRoute) as waUrl"
-                     [href]="waUrl"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     class="contact-action-btn wa-btn"
-                     (click)="$event.stopPropagation()"
-                     title="Chat on WhatsApp">
-                    <span>💬 WhatsApp</span>
-                  </a>
-                </div>
-              </div>
-
-              <div class="payment-summary-block">
-                <span>Method: <strong>{{ req.paymentMethod }}</strong></span> &bull;
-                <span>Status: <strong [class.paid-text]="req.paymentStatus === 'Paid'" [class.pending-text]="req.paymentStatus === 'Pending'">{{ req.paymentStatus }}</strong></span>
-              </div>
-
-              <!-- Mark as Paid trigger -->
-              <div class="req-actions" *ngIf="canMarkPaid(req)">
-                <button
-                  class="ripple-btn accept-btn mark-paid-btn"
-                  [class.confirm-btn]="confirmMarkPaidId === req.id"
-                  (click)="markPaid(req.id)">
-                  {{ confirmMarkPaidId === req.id ? 'Click to Confirm' : 'Mark as Paid' }}
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        <!-- Main Offers Listings list -->
+        <!-- 1. Main Offers Listings list (Your Offered Rides) -->
         <section class="listings-section">
           <h3 class="section-title">Your Offered Rides</h3>
 
@@ -253,10 +136,125 @@ interface PassengerRequest {
           </div>
         </section>
 
-        <!-- Ride History Panel -->
-        <section class="listings-section" *ngIf="rideStore.historicalRides().length > 0">
+        <!-- Passenger Requests / Approvals Panel -->
+        <section class="approvals-section" *ngIf="incomingRequests.length > 0">
+          <h3 class="section-title">Incoming Booking Requests</h3>
+          <div class="requests-list">
+            <div
+              *ngFor="let req of incomingRequests"
+              class="request-card glass-panel">
+
+              <div class="req-header">
+                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
+                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
+                  {{ getInitials(req.passengerName) }}
+                </div>
+                <div class="req-meta">
+                  <span class="req-name">{{ req.passengerName }}</span>
+                  <span class="req-seats">Wants {{ req.seats }} seat{{ req.seats > 1 ? 's' : '' }}</span>
+                </div>
+                <span class="req-badge">₹{{ req.totalPrice }}</span>
+              </div>
+
+              <p class="req-route-info">
+                Route: <strong>{{ req.rideRoute }}</strong>
+              </p>
+
+              <!-- Real Accept/Reject triggers -->
+              <div class="req-actions">
+                <button class="ripple-btn btn-secondary reject-btn" (click)="rejectRequest(req.id)">
+                  Reject
+                </button>
+                <button class="ripple-btn accept-btn" (click)="acceptRequest(req.id, req.rideId, req.seats)">
+                  Accept
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Confirmed Bookings & Payments Panel (Active/Upcoming Only) -->
+        <section class="approvals-section" *ngIf="confirmedBookings.length > 0">
+          <h3 class="section-title">Confirmed Bookings & Payments</h3>
+          <div class="requests-list">
+            <div
+              *ngFor="let req of confirmedBookings"
+              class="request-card glass-panel">
+
+              <div class="req-header">
+                <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
+                <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
+                  {{ getInitials(req.passengerName) }}
+                </div>
+                <div class="req-meta">
+                  <span class="req-name">{{ req.passengerName }}</span>
+                  <span class="req-seats">Booked {{ req.seats }} seat{{ req.seats > 1 ? 's' : '' }}</span>
+                </div>
+                <span class="req-badge">₹{{ req.totalPrice }}</span>
+              </div>
+
+              <p class="req-route-info">
+                Route: <strong>{{ req.rideRoute }}</strong>
+              </p>
+
+              <div class="req-dates-row">
+                <span class="req-date-badge">
+                  <span class="material-icons-outlined" style="font-size: 13px;">today</span>
+                  Ride: <strong>{{ req.departureDate | date:'MMM dd, yyyy' }} at {{ req.departureTime }}</strong>
+                </span>
+              </div>
+
+              <div class="req-contact-box" *ngIf="req.passengerPhone">
+                <p class="req-route-info" style="margin: 0; display: flex; align-items: center; gap: 4px;">
+                  <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
+                  Contact: <strong>{{ req.passengerPhone }}</strong>
+                </p>
+                <div class="contact-actions-row">
+                  <a *ngIf="getCallUrl(req.passengerPhone) as callUrl"
+                     [href]="callUrl"
+                     class="contact-action-btn call-btn"
+                     (click)="$event.stopPropagation()"
+                     title="Call Passenger">
+                    <span>📞 Call</span>
+                  </a>
+                  <a *ngIf="getWhatsAppUrl(req.passengerPhone, req.rideRoute) as waUrl"
+                     [href]="waUrl"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="contact-action-btn wa-btn"
+                     (click)="$event.stopPropagation()"
+                     title="Chat on WhatsApp">
+                    <span>💬 WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+
+              <div class="payment-summary-block">
+                <span>Method: <strong>{{ req.paymentMethod }}</strong></span> &bull;
+                <span>Status: <strong [class.paid-text]="req.paymentStatus === 'Paid'" [class.pending-text]="req.paymentStatus === 'Pending'">{{ req.paymentStatus }}</strong></span>
+              </div>
+
+              <!-- Mark as Paid trigger -->
+              <div class="req-actions" *ngIf="canMarkPaid(req)">
+                <button
+                  class="ripple-btn accept-btn mark-paid-btn"
+                  [class.confirm-btn]="confirmMarkPaidId === req.id"
+                  (click)="markPaid(req.id)">
+                  {{ confirmMarkPaidId === req.id ? 'Click to Confirm' : 'Mark as Paid' }}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Ride History Panel -->
+        <section class="listings-section" *ngIf="rideStore.historicalRides().length > 0 || completedBookings.length > 0">
           <h3 class="section-title">Ride History</h3>
-          <div class="offers-list">
+
+          <!-- Historical Offered Rides -->
+          <div class="offers-list" *ngIf="rideStore.historicalRides().length > 0">
             <div
               class="offer-card glass-panel history-card"
               *ngFor="let ride of rideStore.historicalRides()">
@@ -283,6 +281,92 @@ interface PassengerRequest {
                   <span class="material-icons-outlined icon-mini">info</span>
                   Reason: {{ ride.cancellationReason }}
                 </span>
+              </div>
+
+              <div class="history-meta-row" *ngIf="(ride.status === 'completed' || isDeparted(ride)) && ride.completedAt">
+                <span class="req-date-badge completed-badge">
+                  <span class="material-icons-outlined" style="font-size: 13px;">task_alt</span>
+                  Completed: <strong>{{ ride.completedAt | date:'MMM dd, yyyy, h:mm a' }}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Completed Passenger Bookings & Payments in Ride History -->
+          <div class="history-completed-bookings" *ngIf="completedBookings.length > 0" [style.margin-top]="rideStore.historicalRides().length > 0 ? '16px' : '0'">
+            <h4 class="history-sub-title" *ngIf="rideStore.historicalRides().length > 0">Completed Passenger Bookings</h4>
+            <div class="requests-list">
+              <div
+                *ngFor="let req of completedBookings"
+                class="request-card glass-panel history-card">
+
+                <div class="req-header">
+                  <img *ngIf="req.passengerPhoto && !req.imageError" [src]="req.passengerPhoto" (error)="req.imageError = true" [alt]="req.passengerName" class="req-avatar-img" />
+                  <div class="req-avatar" *ngIf="!req.passengerPhoto || req.imageError" [style.background-color]="getAvatarColor(req.passengerName)">
+                    {{ getInitials(req.passengerName) }}
+                  </div>
+                  <div class="req-meta">
+                    <span class="req-name">{{ req.passengerName }}</span>
+                    <span class="req-seats">Booked {{ req.seats }} seat{{ req.seats > 1 ? 's' : '' }}</span>
+                  </div>
+                  <span class="req-badge">₹{{ req.totalPrice }}</span>
+                </div>
+
+                <p class="req-route-info">
+                  Route: <strong>{{ req.rideRoute }}</strong>
+                </p>
+
+                <div class="req-dates-row">
+                  <span class="req-date-badge">
+                    <span class="material-icons-outlined" style="font-size: 13px;">today</span>
+                    Ride: <strong>{{ req.departureDate | date:'MMM dd, yyyy' }} at {{ req.departureTime }}</strong>
+                  </span>
+                  <span class="req-date-badge completed-badge" *ngIf="req.completedAt">
+                    <span class="material-icons-outlined" style="font-size: 13px;">task_alt</span>
+                    Completed: <strong>{{ req.completedAt | date:'MMM dd, yyyy, h:mm a' }}</strong>
+                  </span>
+                </div>
+
+                <div class="req-contact-box" *ngIf="req.passengerPhone">
+                  <p class="req-route-info" style="margin: 0; display: flex; align-items: center; gap: 4px;">
+                    <span class="material-icons-outlined" style="font-size: 14px; color: var(--color-secondary);">phone</span>
+                    Contact: <strong>{{ req.passengerPhone }}</strong>
+                  </p>
+                  <div class="contact-actions-row">
+                    <a *ngIf="getCallUrl(req.passengerPhone) as callUrl"
+                       [href]="callUrl"
+                       class="contact-action-btn call-btn"
+                       (click)="$event.stopPropagation()"
+                       title="Call Passenger">
+                      <span>📞 Call</span>
+                    </a>
+                    <a *ngIf="getWhatsAppUrl(req.passengerPhone, req.rideRoute) as waUrl"
+                       [href]="waUrl"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="contact-action-btn wa-btn"
+                       (click)="$event.stopPropagation()"
+                       title="Chat on WhatsApp">
+                      <span>💬 WhatsApp</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div class="payment-summary-block">
+                  <span>Method: <strong>{{ req.paymentMethod }}</strong></span> &bull;
+                  <span>Status: <strong [class.paid-text]="req.paymentStatus === 'Paid'" [class.pending-text]="req.paymentStatus === 'Pending'">{{ req.paymentStatus }}</strong></span>
+                </div>
+
+                <!-- Mark as Paid trigger (if departed and pending) -->
+                <div class="req-actions" *ngIf="canMarkPaid(req)">
+                  <button
+                    class="ripple-btn accept-btn mark-paid-btn"
+                    [class.confirm-btn]="confirmMarkPaidId === req.id"
+                    (click)="markPaid(req.id)">
+                    {{ confirmMarkPaidId === req.id ? 'Click to Confirm' : 'Mark as Paid' }}
+                  </button>
+                </div>
+
               </div>
             </div>
           </div>
@@ -919,6 +1003,18 @@ interface PassengerRequest {
       font-style: italic;
     }
 
+    .history-sub-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: hsl(var(--text-secondary));
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     /* Offers list */
     .real-offers {
       display: flex;
@@ -1412,7 +1508,11 @@ export class DriverComponent implements OnInit {
   }
 
   get confirmedBookings() {
-    return this.bookingStore.driverBookings().filter(b => b.status === 'upcoming' || b.status === 'completed');
+    return this.bookingStore.driverBookings().filter(b => b.status === 'upcoming');
+  }
+
+  get completedBookings() {
+    return this.bookingStore.driverBookings().filter(b => b.status === 'completed');
   }
 
   canMarkPaid(req: any): boolean {

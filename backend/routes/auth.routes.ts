@@ -88,13 +88,37 @@ export async function getUserStats(userId: string): Promise<{ joinedDate: string
   }
 }
 
-// Helper to format profile photo URL for seamless proxying (/api/uploads/...)
+// Helper to format photo URL for seamless proxying (/api/uploads/...)
 export function formatPhotoUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (url.startsWith('/uploads/profile-photos/')) {
+  if (url.startsWith('/uploads/profile-photos/') || url.startsWith('/uploads/vehicle-photos/')) {
     return '/api' + url;
   }
   return url;
+}
+
+export async function formatRegisteredVehicles(vehicles: any[]) {
+  if (!vehicles || vehicles.length === 0) return [];
+  const result = [];
+  for (const v of vehicles) {
+    let photos: any[] = [];
+    if (isFallback) {
+      photos = (memoryDb.vehiclePhotos || []).filter(p => p.vehicle_id === v.id);
+    } else {
+      const pRes = await dbQuery('SELECT id, photo_url FROM vehicle_photos WHERE vehicle_id = $1 ORDER BY created_at ASC', [v.id]);
+      photos = pRes.rows;
+    }
+    result.push({
+      id: v.id,
+      model: v.model,
+      numberPlate: v.number_plate || v.numberPlate,
+      type: v.type,
+      color: v.color,
+      photos: photos.map((p: any) => formatPhotoUrl(p.photo_url)),
+      photoDetails: photos.map((p: any) => ({ id: p.id, url: formatPhotoUrl(p.photo_url) }))
+    });
+  }
+  return result;
 }
 
 // Middleware to verify JWT access token
@@ -348,13 +372,7 @@ router.post('/login', sensitiveLimiter, async (req: Request, res: Response) => {
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       } : undefined,
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     const token = generateAccessToken(user.id, user.email);
@@ -362,6 +380,137 @@ router.post('/login', sensitiveLimiter, async (req: Request, res: Response) => {
     return res.json({ user: responseUser, token, refreshToken });
   } catch (err) {
     console.error('Login Error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 3b. POST /api/auth/verify-otp (Verify mobile OTP)
+router.post('/verify-otp', sensitiveLimiter, async (req: Request, res: Response) => {
+  const { phone, otp } = req.body;
+  if (!phone || !otp) {
+    return res.status(400).json({ error: 'Phone and OTP are required' });
+  }
+
+  const digits = String(phone).replace(/\D/g, '');
+  let nationalDigits = digits;
+  if (digits.length === 12 && digits.startsWith('91')) {
+    nationalDigits = digits.substring(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    nationalDigits = digits.substring(1);
+  } else if (digits.length > 10) {
+    nationalDigits = digits.slice(-10);
+  }
+
+  if (nationalDigits.length !== 10) {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit Indian mobile number.' });
+  }
+
+  const phoneClean = `+91${nationalDigits}`;
+
+  if (String(otp).trim().length !== 6) {
+    return res.status(400).json({ error: 'Invalid verification code. Please enter 6 digits.' });
+  }
+
+  try {
+    let user: any = null;
+    if (isFallback) {
+      user = memoryDb.users.find(u => {
+        if (!u.phone) return false;
+        const uDigits = u.phone.replace(/\D/g, '');
+        const u10 = uDigits.length === 12 && uDigits.startsWith('91') ? uDigits.substring(2) : (uDigits.length === 11 && uDigits.startsWith('0') ? uDigits.substring(1) : uDigits);
+        return u10 === nationalDigits;
+      });
+
+      if (!user) {
+        user = {
+          id: `usr_${Date.now()}`,
+          name: `User ${nationalDigits.slice(-4)}`,
+          email: `${nationalDigits}@highwaypool.in`,
+          phone: phoneClean,
+          photo_url: null,
+          is_mobile_verified: true,
+          is_email_verified: false,
+          email_verified: false,
+          password_hash: null,
+          auth_provider: 'phone',
+          rating: 5.0,
+          reviews_count: 0,
+          license_number: null,
+          is_license_verified: false,
+          joined_date: 'Today',
+          trips_count: 0,
+          created_at: new Date().toISOString()
+        };
+        memoryDb.users.push(user);
+      } else {
+        user.is_mobile_verified = true;
+        user.phone = phoneClean;
+      }
+    } else {
+      const resUser = await dbQuery(
+        `SELECT * FROM users 
+         WHERE phone = $1 OR phone = $2 OR phone = $3 OR phone = $4`,
+        [phoneClean, nationalDigits, `+91 ${nationalDigits}`, `0${nationalDigits}`]
+      );
+
+      if (resUser.rows.length === 0) {
+        const newId = `usr_${Date.now()}`;
+        const insRes = await dbQuery(
+          `INSERT INTO users (id, name, email, phone, is_mobile_verified, is_email_verified, email_verified, rating, reviews_count, is_license_verified, auth_provider, created_at)
+           VALUES ($1, $2, $3, $4, TRUE, FALSE, FALSE, 5.0, 0, FALSE, 'phone', NOW())
+           RETURNING *`,
+          [newId, `User ${nationalDigits.slice(-4)}`, `${nationalDigits}@highwaypool.in`, phoneClean]
+        );
+        user = insRes.rows[0];
+      } else {
+        user = resUser.rows[0];
+        const updRes = await dbQuery(
+          `UPDATE users SET is_mobile_verified = TRUE, phone = $1 WHERE id = $2 RETURNING *`,
+          [phoneClean, user.id]
+        );
+        user = updRes.rows[0];
+      }
+    }
+
+    const token = generateAccessToken(user.id, user.email);
+    const refreshToken = await generateAndStoreRefreshToken(user.id);
+
+    let registeredVehicles: any[] = [];
+    if (isFallback) {
+      registeredVehicles = memoryDb.vehicles.filter(v => v.user_id === user.id);
+    } else {
+      const vehRes = await dbQuery('SELECT * FROM vehicles WHERE user_id = $1', [user.id]);
+      registeredVehicles = vehRes.rows;
+    }
+
+    const stats = await getUserStats(user.id);
+    const responseUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      photoUrl: formatPhotoUrl(user.photo_url),
+      isMobileVerified: user.is_mobile_verified,
+      isEmailVerified: user.is_email_verified,
+      licensePlaceholder: user.license_placeholder || user.license_number,
+      createdAt: user.created_at,
+      driverDetails: user.license_number ? {
+        rating: Number(user.rating) || 5.0,
+        reviewsCount: Number(user.reviews_count) || 0,
+        licenseNumber: user.license_number,
+        isLicenseVerified: user.is_license_verified,
+        joinedDate: stats.joinedDate,
+        tripsCount: stats.tripsCount
+      } : undefined,
+      rating: Number(user.rating) || 5.0,
+      tripsCount: stats.tripsCount,
+      reviewsCount: Number(user.reviews_count) || 0,
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
+    };
+
+    return res.json({ user: responseUser, token, refreshToken });
+  } catch (err) {
+    console.error('Verify OTP Error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 });
@@ -506,13 +655,7 @@ router.post('/google', async (req: Request, res: Response) => {
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       } : undefined,
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     const token = generateAccessToken(user.id, user.email);
@@ -703,13 +846,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       } : undefined,
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     return res.json(responseUser);
@@ -778,13 +915,7 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       },
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     return res.json(responseUser);
@@ -798,16 +929,44 @@ router.post('/license', authenticateToken, async (req: Request, res: Response) =
 router.post('/phone', authenticateToken, sensitiveLimiter, async (req: Request, res: Response) => {
   const decoded = (req as any).user;
   const { phone } = req.body;
-  if (!phone || phone.trim() === '') {
+  if (!phone || typeof phone !== 'string' || phone.trim() === '') {
     return res.status(400).json({ error: 'Phone number is required' });
   }
 
-  const phoneClean = phone.trim();
+  const rawClean = phone.trim();
+  const digitsOnly = rawClean.replace(/\D/g, '');
+
+  let nationalDigits = '';
+  if (digitsOnly.length === 12 && digitsOnly.startsWith('91')) {
+    nationalDigits = digitsOnly.substring(2);
+  } else if (digitsOnly.length === 11 && digitsOnly.startsWith('0')) {
+    nationalDigits = digitsOnly.substring(1);
+  } else if (digitsOnly.length === 10) {
+    nationalDigits = digitsOnly;
+  } else {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit Indian mobile number.' });
+  }
+
+  if (!/^\d{10}$/.test(nationalDigits)) {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit Indian mobile number.' });
+  }
+
+  const phoneClean = `+91${nationalDigits}`;
 
   try {
     let user: any = null;
 
     if (isFallback) {
+      const isDuplicate = memoryDb.users.some(u => {
+        if (u.id === decoded.userId || !u.phone) return false;
+        const uDigits = u.phone.replace(/\D/g, '');
+        const u10 = uDigits.length === 12 && uDigits.startsWith('91') ? uDigits.substring(2) : (uDigits.length === 11 && uDigits.startsWith('0') ? uDigits.substring(1) : uDigits);
+        return u10 === nationalDigits;
+      });
+      if (isDuplicate) {
+        return res.status(400).json({ error: 'This phone number is already registered' });
+      }
+
       const idx = memoryDb.users.findIndex(u => u.id === decoded.userId);
       if (idx !== -1) {
         memoryDb.users[idx].phone = phoneClean;
@@ -816,7 +975,12 @@ router.post('/phone', authenticateToken, sensitiveLimiter, async (req: Request, 
       }
     } else {
       // Check if phone number is already registered by someone else
-      const dupCheck = await dbQuery('SELECT id FROM users WHERE phone = $1 AND id != $2', [phoneClean, decoded.userId]);
+      const dupCheck = await dbQuery(
+        `SELECT id FROM users 
+         WHERE (phone = $1 OR phone = $2 OR phone = $3 OR phone = $4) 
+           AND id != $5`,
+        [phoneClean, nationalDigits, `+91 ${nationalDigits}`, `0${nationalDigits}`, decoded.userId]
+      );
       if (dupCheck.rows.length > 0) {
         return res.status(400).json({ error: 'This phone number is already registered' });
       }
@@ -861,13 +1025,7 @@ router.post('/phone', authenticateToken, sensitiveLimiter, async (req: Request, 
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       } : null,
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     return res.json(responseUser);
@@ -934,13 +1092,7 @@ router.post('/demo-login', async (req: Request, res: Response) => {
         joinedDate: stats.joinedDate,
         tripsCount: stats.tripsCount
       } : undefined,
-      registeredVehicles: registeredVehicles.map(v => ({
-        id: v.id,
-        model: v.model,
-        numberPlate: v.number_plate,
-        type: v.type,
-        color: v.color
-      }))
+      registeredVehicles: await formatRegisteredVehicles(registeredVehicles)
     };
 
     const token = generateAccessToken(user.id, user.email);

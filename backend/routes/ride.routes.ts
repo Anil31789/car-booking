@@ -261,6 +261,19 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
 
+    if (ride && ride.vehicle && ride.vehicle.id) {
+      if (!isFallback) {
+        const vpRes = await dbQuery('SELECT photo_url FROM vehicle_photos WHERE vehicle_id = $1 ORDER BY created_at ASC', [ride.vehicle.id]);
+        ride.vehicle.photos = vpRes.rows.map((p: any) => formatPhotoUrl(p.photo_url));
+      } else {
+        ride.vehicle.photos = (memoryDb.vehiclePhotos || [])
+          .filter(p => p.vehicle_id === ride.vehicle.id)
+          .map(p => formatPhotoUrl(p.photo_url));
+      }
+    } else if (ride && ride.vehicle) {
+      ride.vehicle.photos = [];
+    }
+
     const decoded = getOptionalUser(req);
     const requesterId = decoded ? decoded.userId : null;
     const hasAccess = await canSeeDriverPhone(requesterId, ride.id, ride.driverId);
@@ -1164,7 +1177,8 @@ function formatRideRow(r: any) {
       model: r.vehicle_model,
       numberPlate: r.vehicle_plate,
       type: r.vehicle_type,
-      color: r.vehicle_color
+      color: r.vehicle_color,
+      photos: r.vehicle_photos || []
     },
     aboutRide: r.about_ride,
     status: r.status,
@@ -1224,7 +1238,8 @@ function hydrateRideInMemory(r: any) {
       model: vehicle.model,
       numberPlate: vehicle.number_plate,
       type: vehicle.type,
-      color: vehicle.color
+      color: vehicle.color,
+      photos: (memoryDb.vehiclePhotos || []).filter(p => p.vehicle_id === vehicle.id).map(p => formatPhotoUrl(p.photo_url))
     } : undefined,
     aboutRide: r.about_ride,
     status: r.status || 'active',

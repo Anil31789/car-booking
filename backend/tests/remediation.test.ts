@@ -8,6 +8,7 @@ import bookingRouter from '../routes/booking.routes.js';
 import rideRouter from '../routes/ride.routes.js';
 import userRouter from '../routes/user.routes.js';
 import authRouter from '../routes/auth.routes.js';
+import vehicleRouter from '../routes/vehicle.routes.js';
 import { generalLimiter, sensitiveLimiter, generateGeneralKey, generateSensitiveKey } from '../middleware/rate-limiter.js';
 
 const JWT_SECRET = 'highwaypool_supersecret_jwt_token_key_2026';
@@ -44,6 +45,7 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
     app.use('/api/bookings', bookingRouter);
     app.use('/api/rides', rideRouter);
     app.use('/api/users', userRouter);
+    app.use('/api/vehicles', vehicleRouter);
 
     server = app.listen(port);
   });
@@ -2118,5 +2120,347 @@ describe('Audit Remediation & Direct Payment Flow Tests', () => {
     const completedRideData: any = await completedRideRes.json();
     assert.ok(Array.isArray(completedRideData.reviews));
     assert.strictEqual(completedRideData.reviews.length, 1);
+  });
+
+  test('19. Indian Mobile Number Validation & Vehicle Photos Management Flow', async () => {
+    // A. Setup test users and tokens
+    const driverId = 'usr_veh_owner';
+    const driverToken = signToken(driverId, 'driver@highwaypool.test');
+    const passengerId = 'usr_veh_passenger';
+    const intruderId = 'usr_veh_intruder';
+    const intruderToken = signToken(intruderId, 'intruder@highwaypool.test');
+
+    memoryDb.users = [
+      {
+        id: driverId,
+        name: 'Test Vehicle Owner',
+        email: 'driver@highwaypool.test',
+        phone: null,
+        is_mobile_verified: false,
+        is_email_verified: true,
+        is_license_verified: true,
+        license_number: 'DL-998877MH'
+      },
+      {
+        id: passengerId,
+        name: 'Test Passenger',
+        email: 'passenger@highwaypool.test',
+        phone: '+91 91234-56789',
+        is_mobile_verified: true,
+        is_email_verified: true
+      },
+      {
+        id: intruderId,
+        name: 'Intruder User',
+        email: 'intruder@highwaypool.test',
+        phone: null,
+        is_mobile_verified: false
+      }
+    ];
+
+    // --- PART 1: Indian Mobile Number Validation Flow ---
+
+    // 1.1 Non-digits rejected (e.g. letters)
+    const letterPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ phone: '98765abcde' })
+    });
+    assert.strictEqual(letterPhoneRes.status, 400, 'Non-digits phone must return 400');
+    const letterPhoneData: any = await letterPhoneRes.json();
+    assert.ok(letterPhoneData.error.includes('10-digit Indian mobile number'));
+
+    // 1.2 Invalid length (< 10 digits)
+    const shortPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ phone: '987654321' })
+    });
+    assert.strictEqual(shortPhoneRes.status, 400, 'Phone with < 10 digits must return 400');
+
+    // 1.3 Invalid length (> 10 digits without +91 / 0 prefix)
+    const longPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ phone: '1234567890123' })
+    });
+    assert.strictEqual(longPhoneRes.status, 400, 'Phone with arbitrary > 10 digits must return 400');
+
+    // 1.4 Valid 10 digits submitted: normalized to +91XXXXXXXXXX
+    const validPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ phone: '9876543210' })
+    });
+    assert.strictEqual(validPhoneRes.status, 200, 'Valid 10 digits must return 200');
+    const validPhoneUser: any = await validPhoneRes.json();
+    assert.strictEqual(validPhoneUser.phone, '+919876543210', 'Number must be normalized to +91XXXXXXXXXX');
+    assert.strictEqual(validPhoneUser.isMobileVerified, true, 'isMobileVerified must be set to true');
+
+    // 1.5 Compatibility: input containing +91 is cleanly accepted & normalized
+    const withPrefixPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ phone: '+919876543210' })
+    });
+    assert.strictEqual(withPrefixPhoneRes.status, 200, 'Phone with +91 prefix must be accepted');
+
+    // 1.6 Duplicate mobile number check: another user cannot register the same mobile number
+    const dupPhoneRes = await fetch(`${baseUrl}/auth/phone`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${intruderToken}`
+      },
+      body: JSON.stringify({ phone: '9876543210' })
+    });
+    assert.strictEqual(dupPhoneRes.status, 400, 'Duplicate phone number must return 400');
+
+    // 1.7 Verify OTP endpoint
+    const otpRes = await fetch(`${baseUrl}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '9811223344', otp: '123456' })
+    });
+    assert.strictEqual(otpRes.status, 200, 'Valid OTP must return 200');
+    const otpData: any = await otpRes.json();
+    assert.ok(otpData.token, 'OTP verify must return JWT token');
+    assert.strictEqual(otpData.user.phone, '+919811223344', 'User phone in OTP verify must be normalized');
+
+    // --- PART 2: Vehicle Photos Management Flow ---
+    const vehicleId = 'veh_test_car_1';
+    memoryDb.vehicles = [
+      {
+        id: vehicleId,
+        user_id: driverId,
+        model: 'Honda City ZX',
+        number_plate: 'MH 02 BD 8492',
+        type: 'Sedan',
+        color: 'Platinum White'
+      },
+      {
+        id: 'veh_other_car',
+        user_id: 'usr_someone_else',
+        model: 'Hyundai Verna',
+        number_plate: 'MH 14 CD 1234',
+        type: 'Sedan',
+        color: 'Phantom Black'
+      }
+    ];
+    memoryDb.vehiclePhotos = [];
+
+    // Helper base64 generator
+    const makeBase64Image = (mime: string, byteCount: number = 64) => {
+      const buffer = Buffer.alloc(byteCount, 'A');
+      return `data:${mime};base64,${buffer.toString('base64')}`;
+    };
+
+    // 2.1 Ownership Authorization: Intruder / Non-owner cannot upload photos to driver's vehicle
+    const unauthUploadRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${intruderToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/jpeg', 100) })
+    });
+    assert.strictEqual(unauthUploadRes.status, 403, 'Non-owner upload must return 403 Forbidden');
+
+    // 2.2 Invalid file type validation (e.g. text/plain or image/gif)
+    const invalidTypeRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: 'data:text/plain;base64,SGVsbG8gV29ybGQ=' })
+    });
+    assert.strictEqual(invalidTypeRes.status, 400, 'Invalid MIME type must return 400');
+
+    // 2.3 File size limit validation (> 5 MB)
+    const oversizedBase64 = `data:image/jpeg;base64,${Buffer.alloc(5.5 * 1024 * 1024, 'B').toString('base64')}`;
+    const oversizedRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: oversizedBase64 })
+    });
+    assert.strictEqual(oversizedRes.status, 400, 'Oversized file > 5MB must return 400');
+
+    // 2.4 Upload Photo 1 (JPEG)
+    const upload1Res = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/jpeg', 200) })
+    });
+    assert.strictEqual(upload1Res.status, 200, 'Photo 1 upload must return 200');
+    const upload1Data: any = await upload1Res.json();
+    assert.strictEqual(upload1Data.success, true);
+    assert.strictEqual(upload1Data.photos.length, 1);
+    assert.ok(upload1Data.photo.photoUrl.startsWith('/api/uploads/vehicle-photos/'));
+    const photo1Id = upload1Data.photo.id;
+
+    // 2.5 Upload Photo 2 (PNG)
+    const upload2Res = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/png', 200) })
+    });
+    assert.strictEqual(upload2Res.status, 200);
+    const upload2Data: any = await upload2Res.json();
+    assert.strictEqual(upload2Data.photos.length, 2);
+    const photo2Id = upload2Data.photo.id;
+
+    // 2.6 Upload Photo 3 (WebP)
+    const upload3Res = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/webp', 200) })
+    });
+    assert.strictEqual(upload3Res.status, 200);
+    const upload3Data: any = await upload3Res.json();
+    assert.strictEqual(upload3Data.photos.length, 3);
+    const photo3Id = upload3Data.photo.id;
+
+    // 2.7 Maximum 3 photos limit enforcement (Photo 4 must be rejected)
+    const upload4Res = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/jpeg', 200) })
+    });
+    assert.strictEqual(upload4Res.status, 400, 'Uploading 4th photo must return 400');
+    const upload4Data: any = await upload4Res.json();
+    assert.ok(upload4Data.error.includes('Maximum 3 photos'));
+
+    // 2.8 Replace Photo (PUT /api/vehicles/:vehicleId/photos/:photoId)
+    // Non-owner cannot replace
+    const unauthReplaceRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos/${photo2Id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${intruderToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/jpeg', 250) })
+    });
+    assert.strictEqual(unauthReplaceRes.status, 403, 'Non-owner cannot replace vehicle photo');
+
+    // Owner replaces photo 2
+    const replaceRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos/${photo2Id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${driverToken}`
+      },
+      body: JSON.stringify({ photo: makeBase64Image('image/jpeg', 250) })
+    });
+    assert.strictEqual(replaceRes.status, 200, 'Owner replacing photo must return 200');
+    const replaceData: any = await replaceRes.json();
+    assert.strictEqual(replaceData.photos.length, 3, 'Photo count must remain 3 after replace');
+
+    // 2.9 Delete Photo (DELETE /api/vehicles/:vehicleId/photos/:photoId)
+    // Non-owner cannot delete
+    const unauthDeleteRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos/${photo3Id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${intruderToken}` }
+    });
+    assert.strictEqual(unauthDeleteRes.status, 403, 'Non-owner cannot delete vehicle photo');
+
+    // Owner deletes photo 3
+    const deleteRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos/${photo3Id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${driverToken}` }
+    });
+    assert.strictEqual(deleteRes.status, 200, 'Owner deleting photo must return 200');
+    const deleteData: any = await deleteRes.json();
+    assert.strictEqual(deleteData.photos.length, 2, 'Photo count must be 2 after deleting 1 photo');
+
+    // 2.10 Public list photos endpoint (GET /api/vehicles/:vehicleId/photos)
+    const listPhotosRes = await fetch(`${baseUrl}/vehicles/${vehicleId}/photos`, { method: 'GET' });
+    assert.strictEqual(listPhotosRes.status, 200);
+    const listPhotosData: any = await listPhotosRes.json();
+    assert.strictEqual(listPhotosData.photos.length, 2);
+
+    // 2.11 Ride Details API returns vehicle photos when available
+    const rideId = 'ride_veh_test_1';
+    memoryDb.rides.push({
+      id: rideId,
+      driver_id: driverId,
+      from_city: 'Mumbai',
+      to_city: 'Pune',
+      departure_time: '08:00 AM',
+      arrival_time: '11:00 AM',
+      ride_date: '2026-10-01',
+      price: 450,
+      total_seats: 3,
+      available_seats: 3,
+      status: 'active',
+      vehicle_id: vehicleId,
+      stops: []
+    });
+
+    const rideDetailsRes = await fetch(`${baseUrl}/rides/${rideId}`, { method: 'GET' });
+    assert.strictEqual(rideDetailsRes.status, 200);
+    const rideDetailsData: any = await rideDetailsRes.json();
+    assert.ok(rideDetailsData.vehicle, 'Vehicle info must be present');
+    assert.ok(Array.isArray(rideDetailsData.vehicle.photos), 'Vehicle photos array must be present');
+    assert.strictEqual(rideDetailsData.vehicle.photos.length, 2, 'Vehicle should have 2 photos in Ride Details');
+    assert.ok(
+      rideDetailsData.vehicle.photos.every((p: string) => !p.includes('\\') && !p.includes('C:')),
+      'No private filesystem paths should be exposed in vehicle photos'
+    );
+
+    // 2.12 Existing vehicles without photos continue working normally
+    const rideNoPhotosId = 'ride_no_photos_1';
+    memoryDb.rides.push({
+      id: rideNoPhotosId,
+      driver_id: driverId,
+      from_city: 'Pune',
+      to_city: 'Nashik',
+      departure_time: '09:00 AM',
+      arrival_time: '01:00 PM',
+      ride_date: '2026-10-02',
+      price: 500,
+      total_seats: 3,
+      available_seats: 3,
+      status: 'active',
+      vehicle_id: 'veh_other_car',
+      stops: []
+    });
+
+    const rideNoPhotosRes = await fetch(`${baseUrl}/rides/${rideNoPhotosId}`, { method: 'GET' });
+    assert.strictEqual(rideNoPhotosRes.status, 200);
+    const rideNoPhotosData: any = await rideNoPhotosRes.json();
+    assert.ok(rideNoPhotosData.vehicle);
+    assert.strictEqual(rideNoPhotosData.vehicle.model, 'Hyundai Verna');
+    assert.strictEqual(rideNoPhotosData.vehicle.photos.length, 0, 'Vehicle without photos should have empty photos array');
   });
 });

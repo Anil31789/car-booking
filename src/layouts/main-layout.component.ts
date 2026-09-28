@@ -30,7 +30,7 @@ import { filter } from 'rxjs/operators';
           <button class="icon-btn notification-bell-btn" (click)="toggleNotifications()" [class.has-unread]="notificationStore.unreadCount() > 0" title="Notifications">
             <span class="material-icons-outlined">notifications</span>
             <span class="notification-badge" *ngIf="notificationStore.unreadCount() > 0">
-              {{ notificationStore.unreadCount() }}
+              {{ notificationStore.unreadCount() > 99 ? '99+' : notificationStore.unreadCount() }}
             </span>
           </button>
           
@@ -175,16 +175,21 @@ import { filter } from 'rxjs/operators';
       right: 2px;
       background-color: var(--color-danger);
       color: #ffffff;
-      font-size: 0.62rem;
-      font-weight: 800;
-      min-width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      display: flex;
+      font-size: 0.65rem;
+      font-weight: 700;
+      line-height: 1;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      border-radius: 999px;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 2px;
+      box-sizing: border-box;
       border: 1.5px solid hsl(var(--bg-primary));
+      pointer-events: none;
+      white-space: nowrap;
+      text-align: center;
     }
 
     /* Notification Drawer styles */

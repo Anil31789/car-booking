@@ -68,3 +68,40 @@ export function getCallUrl(phone: string | null | undefined): string | null {
   if (!cleaned || cleaned.replace(/\D/g, '').length < 5) return null;
   return `tel:${cleaned}`;
 }
+
+/**
+ * Extracts 10-digit Indian phone number from any formatted string
+ * e.g. "+919876543210", "+91 98765-43210", "09876543210", "9876543210" -> "9876543210".
+ */
+export function extract10DigitPhone(phone: string | null | undefined): string {
+  if (!phone || typeof phone !== 'string') return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.substring(2);
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.substring(1);
+  }
+  if (digits.length === 10) {
+    return digits;
+  }
+  if (digits.length > 10) {
+    if (digits.startsWith('91')) return digits.substring(2, 12);
+    return digits.slice(-10);
+  }
+  return digits;
+}
+
+/**
+ * Validates and normalizes an Indian mobile number to standard "+91" + 10 digits.
+ * Accepts 10 digits, +91-prefixed numbers, or 0-prefixed 11 digits.
+ * Returns normalized "+919876543210" or null if invalid.
+ */
+export function normalizeIndianMobile(phone: string | null | undefined): string | null {
+  if (!phone || typeof phone !== 'string') return null;
+  const digits10 = extract10DigitPhone(phone);
+  if (/^\d{10}$/.test(digits10)) {
+    return `+91${digits10}`;
+  }
+  return null;
+}

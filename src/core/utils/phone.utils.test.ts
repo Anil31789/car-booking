@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { normalizePhoneForWhatsApp, getWhatsAppUrl, getCallUrl } from './phone.utils.js';
+import { normalizePhoneForWhatsApp, getWhatsAppUrl, getCallUrl, extract10DigitPhone, normalizeIndianMobile } from './phone.utils.js';
 
 describe('Phone Utils Test Suite', () => {
   test('normalizePhoneForWhatsApp - Indian 10 digits', () => {
@@ -71,5 +71,24 @@ describe('Phone Utils Test Suite', () => {
     assert.strictEqual(getCallUrl(null), null);
     assert.strictEqual(getCallUrl(''), null);
     assert.strictEqual(getCallUrl('123'), null);
+  });
+
+  test('extract10DigitPhone - extracts exactly 10 digits from various formats', () => {
+    assert.strictEqual(extract10DigitPhone('9876543210'), '9876543210');
+    assert.strictEqual(extract10DigitPhone('+919876543210'), '9876543210');
+    assert.strictEqual(extract10DigitPhone('+91 98765-43210'), '9876543210');
+    assert.strictEqual(extract10DigitPhone('09876543210'), '9876543210');
+    assert.strictEqual(extract10DigitPhone(null), '');
+    assert.strictEqual(extract10DigitPhone(''), '');
+  });
+
+  test('normalizeIndianMobile - formats to +91XXXXXXXXXX', () => {
+    assert.strictEqual(normalizeIndianMobile('9876543210'), '+919876543210');
+    assert.strictEqual(normalizeIndianMobile('+919876543210'), '+919876543210');
+    assert.strictEqual(normalizeIndianMobile('+91 98765-43210'), '+919876543210');
+    assert.strictEqual(normalizeIndianMobile('09876543210'), '+919876543210');
+    assert.strictEqual(normalizeIndianMobile('12345'), null);
+    assert.strictEqual(normalizeIndianMobile('abcdefghij'), null);
+    assert.strictEqual(normalizeIndianMobile(null), null);
   });
 });
